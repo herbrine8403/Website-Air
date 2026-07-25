@@ -1,10 +1,10 @@
 <?php
 // MySQL 数据库连接配置
 // InfinityFree 数据库凭据从环境变量读取，回退到硬编码（部署后修改）
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'if0_xxxx_analytics');
-define('DB_USER', getenv('DB_USER') ?: 'if0_xxxx');
-define('DB_PASS', getenv('DB_PASS') ?: 'your_password');
+define('DB_HOST', getenv('DB_HOST') ?: 'sql301.infinityfree.com');
+define('DB_NAME', getenv('DB_NAME') ?: 'REMOVED_DB_NAME');
+define('DB_USER', getenv('DB_USER') ?: 'REMOVED_DB_USER');
+define('DB_PASS', getenv('DB_PASS') ?: 'REMOVED_DB_PASS');
 
 // 公告系统基础 URL（用于设备型号映射等）
 define('BASE_URL', 'https://newamethyst.ct.ws');
