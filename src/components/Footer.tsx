@@ -111,13 +111,13 @@ export function Footer() {
           style={{ borderTop: "1px solid var(--border)" }}
         >
           <a
-            href="https://icp.gov.moe/?keyword=20262011"
+            href="https://icp.gov.moe/?keyword=20267195"
             target="_blank"
             rel="noopener noreferrer"
             className="footer-link text-xs"
             style={{ fontFamily: "var(--font-mono)" }}
           >
-            萌ICP备20262011号
+            萌ICP备20267195号
           </a>
           <a
             href="https://github.com/herbrine8403/Amethyst-iOS-MyRemastered"
