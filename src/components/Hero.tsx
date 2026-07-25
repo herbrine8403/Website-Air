@@ -66,7 +66,7 @@ export function Hero() {
         className="max-w-xl text-base leading-relaxed"
         style={{ color: "var(--muted-foreground)" }}
       >
-        基于 Amethyst 深度重制，支持 Mod 管理、光影包管理、整合包导入等丰富功能，为 iOS 设备带来原生的 Minecraft Java 版体验
+        一款面向 iOS 和 iPadOS 平台的 Minecraft: Java Edition 高端启动器，基于官方 Amethyst 项目深度重构。提供了精致的移动端体验，集成了全面的 Mod 管理、智能渲染器选择以及深度的平台适配能力。
       </motion.p>
 
       {/* CTAs */}

@@ -7,10 +7,9 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
     title: "产品",
     links: [
       { label: "首页", href: "/" },
-      { label: "功能", href: "#features" },
       { label: "安装", href: "/install" },
       { label: "公告", href: "/announcements.html" },
-      { label: "截图", href: "#screenshots" },
+      { label: "统计", href: "/stats.html" },
     ],
   },
   {
@@ -39,7 +38,7 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
     links: [
       {
         label: "Amethyst iOS",
-        href: "https://github.com/herbrine8403/Amethyst-iOS",
+        href: "https://github.com/AngelAuraMC/Amethyst-iOS",
         external: true,
       },
       { label: "AltStore", href: "https://altstore.io", external: true },
@@ -72,7 +71,7 @@ export function Footer() {
               className="mt-2 max-w-xs text-sm"
               style={{ color: "var(--muted-foreground)" }}
             >
-              为 iOS 打造的 Minecraft 启动器
+              一个强大的 iOS 端 Minecraft Java 版启动器
             </p>
           </div>
 

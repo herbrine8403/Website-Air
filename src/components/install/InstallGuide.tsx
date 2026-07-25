@@ -22,7 +22,6 @@ const installMethods: InstallMethod[] = [
     steps: [
       "下载 TrollStore 安装包并安装到设备",
       "通过 TrollStore 安装下载的 .tipa 文件",
-      "在设置中信任开发者证书",
       "启动 Air，享受游戏",
     ],
     note: "TrollStore 需要特定 iOS 版本，请参考官方教程",

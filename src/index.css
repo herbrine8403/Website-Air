@@ -9,70 +9,74 @@
 @layer base {
   :root {
     /* ===== Primitives — brand (cool-neutral) ===== */
-    --brand-50: #fafafa;
-    --brand-100: #f4f4f5;
-    --brand-200: #e4e4e7;
-    --brand-300: #d4d4d8;
-    --brand-400: #a1a1aa;
-    --brand-500: #71717a;
-    --brand-600: #52525b;
-    --brand-700: #3f3f46;
-    --brand-800: #27272a;
-    --brand-900: #18181b;
+    --brand-50: #ffffff;
+    --brand-100: #eef4ff;
+    --brand-200: #dfe9ff;
+    --brand-300: #d5e1ff;
+    --brand-400: #c4d4ff;
+    --brand-500: #a8c2ff;
+    --brand-600: #7fa3f0;
+    --brand-700: #5b8def;
+    --brand-800: #4a7fd9;
+    --brand-900: #1a2b4a;
 
     /* ===== Primitives — background (pure-neutral surface) ===== */
     --background-50: #ffffff;
-    --background-100: #fafafa;
-    --background-200: #f5f5f5;
-    --background-300: #e5e5e5;
-    --background-400: #d4d4d4;
+    --background-100: #dfe9ff;
+    --background-200: #d5e1ff;
+    --background-300: #bcd2ff;
+    --background-400: #dee2e6;
     --background-500: #a3a3a3;
     --background-600: #404040;
     --background-700: #262626;
     --background-800: #171717;
     --background-900: #0a0a0a;
 
-    /* ===== Semantic Role Tokens — light theme ===== */
-    --background: var(--background-50);
-    --card: var(--background-50);
-    --popover: var(--background-50);
-    --muted: var(--background-100);
+    /* ===== Semantic Role Tokens — light theme（浅蓝主题） ===== */
+    --background: #ffffff;
+    --card: #fafcff;
+    --popover: #ffffff;
+    --muted: #d5e1ff;
 
-    --foreground: var(--brand-900);
-    --card-foreground: var(--brand-900);
-    --popover-foreground: var(--brand-900);
-    --primary-foreground: var(--brand-50);
-    --secondary-foreground: var(--brand-900);
-    --muted-foreground: var(--brand-500);
-    --accent-foreground: var(--brand-900);
-    --destructive-foreground: var(--background-50);
-    --sidebar-foreground: var(--brand-900);
-    --sidebar-primary-foreground: var(--brand-50);
-    --sidebar-accent-foreground: var(--brand-900);
+    --foreground: #1a2b4a;
+    --card-foreground: #1a2b4a;
+    --popover-foreground: #1a2b4a;
+    --primary-foreground: #1a2b4a;
+    --secondary-foreground: #1a2b4a;
+    --muted-foreground: #5a6c8a;
+    --accent-foreground: #1a2b4a;
+    --destructive-foreground: #ffffff;
+    --sidebar-foreground: #1a2b4a;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent-foreground: #1a2b4a;
 
-    --primary: var(--brand-900);
-    --secondary: var(--brand-100);
-    --accent: var(--brand-100);
-    --input: var(--brand-200);
-    --ring: var(--brand-900);
+    --primary: #dee2e6;
+    --secondary: #d5e1ff;
+    --accent: #d5e1ff;
+    --input: #bcd2ff;
+    --ring: #5b8def;
 
-    --border: var(--brand-200);
-    --border-strong: var(--brand-300);
+    --border: #bcd2ff;
+    --border-strong: #a8c2ff;
 
     --destructive: #dc2626;
 
-    --brand-subtle: var(--brand-100);
-    --brand-border: var(--brand-300);
+    --brand-subtle: #d5e1ff;
+    --brand-border: #bcd2ff;
 
-    --sidebar: var(--brand-50);
-    --sidebar-primary: var(--brand-900);
-    --sidebar-accent: var(--brand-100);
-    --sidebar-border: var(--brand-200);
-    --sidebar-ring: var(--brand-400);
+    --sidebar: #dfe9ff;
+    --sidebar-primary: #dee2e6;
+    --sidebar-accent: #d5e1ff;
+    --sidebar-border: #bcd2ff;
+    --sidebar-ring: #5b8def;
 
-    /* ===== 克制蓝点缀（仅用于导航激活、链接 hover、焦点环） ===== */
-    --accent-blue: #2563ef;
+    /* ===== 浅蓝点缀（导航激活、链接 hover、焦点环、badge） ===== */
+    --accent-blue: #4476d5;
     --accent-blue-foreground: #ffffff;
+    --accent-blue-soft: #bcd2ff;
+    --btn-bg: #4476d5;
+    --btn-bg-hover: #3a66bf;
+    --btn-blue-fg: #ffffff;
     --ring: var(--accent-blue);
 
     /* ===== Typography ===== */
@@ -97,45 +101,50 @@
   }
 
   .dark {
-    /* ===== Dark theme overrides ===== */
-    --background: var(--brand-900);
-    --card: var(--brand-800);
-    --popover: var(--brand-800);
-    --muted: var(--brand-800);
+    /* ===== Dark theme overrides（深蓝调） ===== */
+    --background: #1a2540;
+    --card: #243352;
+    --popover: #243352;
+    --muted: #2a3a5c;
 
-    --foreground: var(--brand-50);
-    --card-foreground: var(--brand-50);
-    --popover-foreground: var(--brand-50);
-    --primary-foreground: var(--brand-900);
-    --secondary-foreground: var(--brand-50);
-    --muted-foreground: var(--brand-400);
-    --accent-foreground: var(--brand-50);
-    --destructive-foreground: var(--brand-50);
-    --sidebar-foreground: var(--brand-50);
-    --sidebar-primary-foreground: var(--brand-900);
-    --sidebar-accent-foreground: var(--brand-50);
+    --foreground: #e8efff;
+    --card-foreground: #e8efff;
+    --popover-foreground: #e8efff;
+    --primary-foreground: #1a2540;
+    --secondary-foreground: #e8efff;
+    --muted-foreground: #a8b8d8;
+    --accent-foreground: #e8efff;
+    --destructive-foreground: #ffffff;
+    --sidebar-foreground: #e8efff;
+    --sidebar-primary-foreground: #1a2540;
+    --sidebar-accent-foreground: #e8efff;
 
-    --primary: var(--brand-50);
-    --secondary: var(--brand-800);
-    --accent: var(--brand-700);
-    --input: var(--brand-700);
-    --ring: var(--brand-300);
+    --primary: #4a5a7a;
+    --secondary: #2a3a5c;
+    --accent: #2a3a5c;
+    --input: #3a4a6e;
+    --ring: #7aaaff;
 
-    --border: var(--brand-700);
-    --border-strong: var(--brand-600);
+    --border: #3a4a6e;
+    --border-strong: #4a5a7a;
 
     --destructive: #ef4444;
 
-    --brand-subtle: var(--brand-800);
-    --brand-border: var(--brand-700);
+    --brand-subtle: #2a3a5c;
+    --brand-border: #3a4a6e;
 
-    --sidebar: var(--brand-800);
-    --sidebar-primary: var(--brand-50);
-    --sidebar-accent: var(--brand-700);
-    --sidebar-border: var(--brand-700);
-    --sidebar-ring: var(--brand-400);
+    --sidebar: #243352;
+    --sidebar-primary: #4a5a7a;
+    --sidebar-accent: #2a3a5c;
+    --sidebar-border: #3a4a6e;
+    --sidebar-ring: #7aaaff;
 
-    --accent-blue: #3b82f6;
+    --accent-blue: #7aaaff;
+    --accent-blue-foreground: #1a2540;
+    --accent-blue-soft: #3a4a6e;
+    --btn-bg: #4476d5;
+    --btn-bg-hover: #3a66bf;
+    --btn-blue-fg: #ffffff;
   }
 }
 
@@ -188,6 +197,7 @@
   .navbar[data-nav-active="features"] .nav-features,
   .navbar[data-nav-active="install"] .nav-install,
   .navbar[data-nav-active="announcements"] .nav-announcements,
+  .navbar[data-nav-active="stats"] .nav-stats,
   .navbar[data-nav-active="screenshots"] .nav-screenshots,
   .navbar[data-nav-active="about"] .nav-about {
     color: var(--accent-blue);
@@ -216,15 +226,15 @@
   }
   .bento-card {
     @apply relative overflow-hidden;
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius);
     background: var(--card);
     padding: 24px;
     box-shadow: var(--shadow-sm);
-    transition: border-color 0.16s ease;
+    transition: box-shadow 0.16s ease;
   }
   .bento-card:hover {
-    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
   }
   .bento-card::after {
     content: "";
@@ -253,14 +263,14 @@
   }
   .ss-card {
     @apply relative overflow-hidden flex flex-col;
-    border: 1px solid var(--border);
+    border: none;
     border-radius: var(--radius);
     background: var(--card);
     box-shadow: var(--shadow-sm);
-    transition: border-color 0.16s ease;
+    transition: box-shadow 0.16s ease;
   }
   .ss-card:hover {
-    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
   }
   .ss-card--lg { grid-column: span 6; grid-row: span 2; }
   .ss-card--md { grid-column: span 6; }
@@ -271,13 +281,13 @@
     @apply inline-flex items-center justify-center gap-2;
     padding: 12px 24px;
     border-radius: var(--radius);
-    background: var(--accent-blue);
-    color: var(--accent-blue-foreground);
+    background: var(--btn-bg);
+    color: var(--btn-blue-fg);
     font-weight: 500;
     font-size: 14px;
-    transition: opacity 0.16s ease, transform 0.15s ease;
+    transition: background-color 0.16s ease, transform 0.15s ease;
   }
-  .btn-blue:hover { opacity: 0.9; }
+  .btn-blue:hover { background: var(--btn-bg-hover); }
   .btn-blue:active { transform: scale(0.97); }
   .btn-blue:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 

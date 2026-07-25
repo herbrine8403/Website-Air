@@ -20,7 +20,7 @@ export function AirNewVersionCard() {
           color: "var(--foreground)",
         }}
       >
-        v1.0.0
+        v5.0.0
       </div>
       <div className="mt-2 flex items-center gap-3">
         <span

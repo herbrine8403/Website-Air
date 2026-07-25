@@ -15,6 +15,7 @@ export default defineConfig({
         main: path.resolve(__dirname, "index.html"),
         install: path.resolve(__dirname, "install.html"),
         announcements: path.resolve(__dirname, "announcements.html"),
+        stats: path.resolve(__dirname, "stats.html"),
       },
     },
   },

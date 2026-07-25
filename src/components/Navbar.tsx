@@ -6,11 +6,9 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "首页", href: "/", active: "home", key: "home" },
-  { label: "功能", href: "#features", active: "features", key: "features" },
   { label: "安装", href: "/install", active: "install", key: "install" },
   { label: "公告", href: "/announcements.html", active: "announcements", key: "announcements" },
-  { label: "截图", href: "#screenshots", active: "screenshots", key: "screenshots" },
-  { label: "关于", href: "#about", active: "about", key: "about" },
+  { label: "统计", href: "/stats.html", active: "stats", key: "stats" },
 ];
 
 interface NavbarProps {
@@ -37,7 +35,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
       setActiveSection(forceActive);
       return;
     }
-    const sections = ["home", "features", "announcements", "screenshots", "about"];
+    const sections = ["home", "announcements", "stats"];
     const observers: IntersectionObserver[] = [];
 
     sections.forEach((id) => {

@@ -8,8 +8,8 @@ interface VersionTabsProps {
 }
 
 const tabs: { key: VersionTab; label: string; badge: string }[] = [
-  { key: "latest", label: "Air 新版", badge: "新版" },
-  { key: "legacy", label: "Amethyst 旧版", badge: "旧版" },
+  { key: "latest", label: "Air", badge: "新版" },
+  { key: "legacy", label: "Amethyst iOS Remastered", badge: "旧版" },
 ];
 
 export function VersionTabs({ active, onChange }: VersionTabsProps) {
