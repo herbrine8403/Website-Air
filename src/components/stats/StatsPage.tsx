@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { AdminAuth } from "@/components/stats/AdminAuth";
 import { RefreshCw, Users, AlertCircle, Gamepad2, Clock, Power, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +113,8 @@ export default function StatsPage() {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // 管理员验证状态
+  const [authed, setAuthed] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -129,11 +132,13 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
+    // 仅在已通过管理员验证后才拉取统计数据
+    if (!authed) return;
     fetchStats();
     // 每 5 分钟自动刷新
     const interval = setInterval(fetchStats, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchStats]);
+  }, [fetchStats, authed]);
 
   return (
     <div className="min-h-screen bg-background text-foreground antialiased overflow-x-hidden">
@@ -153,15 +158,17 @@ export default function StatsPage() {
                 Analytics
               </span>
             </div>
-            <button
-              onClick={fetchStats}
-              disabled={loading}
-              className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-xs transition-colors hover:border-[var(--border-strong)] disabled:opacity-50"
-              style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-              刷新
-            </button>
+            {authed && (
+              <button
+                onClick={fetchStats}
+                disabled={loading}
+                className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border px-3 py-1.5 text-xs transition-colors hover:border-[var(--border-strong)] disabled:opacity-50"
+                style={{ borderColor: "var(--border)", color: "var(--muted-foreground)" }}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+                刷新
+              </button>
+            )}
           </div>
           <h1 className="text-4xl" style={{ fontFamily: "var(--font-serif)", color: "var(--foreground)" }}>
             使用统计
@@ -171,25 +178,41 @@ export default function StatsPage() {
           </p>
         </section>
 
-        {/* Loading / Error / Content */}
-        {loading && !stats ? (
-          <section className="pb-16">
-            <div className="flex items-center justify-center py-20">
-              <RefreshCw className="h-6 w-6 animate-spin" style={{ color: "var(--muted-foreground)" }} />
-            </div>
-          </section>
-        ) : error ? (
-          <section className="pb-16">
-            <div className="flex flex-col items-center gap-3 py-20">
-              <AlertCircle className="h-8 w-8" style={{ color: "var(--destructive)" }} />
-              <p style={{ color: "var(--muted-foreground)" }}>加载失败：{error}</p>
-              <button onClick={fetchStats} className="btn-blue">
-                重试
-              </button>
-            </div>
-          </section>
-        ) : stats ? (
+        {/* 管理员验证拦截层：未验证则只显示登录表单 */}
+        {!authed ? (
+          <AdminAuth
+            authed={authed}
+            onAuthed={() => setAuthed(true)}
+            onLogout={() => setAuthed(false)}
+          />
+        ) : (
           <>
+            {/* 已登录状态条 */}
+            <AdminAuth
+              authed={authed}
+              onAuthed={() => setAuthed(true)}
+              onLogout={() => setAuthed(false)}
+            />
+
+            {/* Loading / Error / Content */}
+            {loading && !stats ? (
+              <section className="pb-16">
+                <div className="flex items-center justify-center py-20">
+                  <RefreshCw className="h-6 w-6 animate-spin" style={{ color: "var(--muted-foreground)" }} />
+                </div>
+              </section>
+            ) : error ? (
+              <section className="pb-16">
+                <div className="flex flex-col items-center gap-3 py-20">
+                  <AlertCircle className="h-8 w-8" style={{ color: "var(--destructive)" }} />
+                  <p style={{ color: "var(--muted-foreground)" }}>加载失败：{error}</p>
+                  <button onClick={fetchStats} className="btn-blue">
+                    重试
+                  </button>
+                </div>
+              </section>
+            ) : stats ? (
+              <>
             {/* 顶部数据卡片 */}
             <section className="pb-8">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -387,7 +410,9 @@ export default function StatsPage() {
               </div>
             </section>
           </>
-        ) : null}
+            ) : null}
+          </>
+        )}
       </main>
 
       <Footer />

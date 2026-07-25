@@ -9,7 +9,7 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
       { label: "首页", href: "/" },
       { label: "安装", href: "/install" },
       { label: "公告", href: "/announcements.html" },
-      { label: "统计", href: "/stats.html" },
+      // 统计页面已设为隐藏（需管理员权限）
     ],
   },
   {
