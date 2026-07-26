@@ -120,7 +120,7 @@ export default function StatsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("https://newamethyst.ct.ws/api/stats.php");
+      const response = await fetch("https://website-air.weishixvn.workers.dev/api/stats.php");
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setStats(data);
