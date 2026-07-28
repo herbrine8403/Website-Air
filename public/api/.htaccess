@@ -1,0 +1,10 @@
+# API 目录专属配置
+# 仅对 API 请求启用 Authorization 头透传（Apache CGI/FastCGI 模式必需）
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 透传 Authorization 头到 PHP
+  RewriteCond %{HTTP:Authorization} ^(.*)$
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
+</IfModule>

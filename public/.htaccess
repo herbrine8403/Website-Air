@@ -5,10 +5,6 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # 透传 Authorization 头到 PHP（Apache CGI/FastCGI 模式必需）
-  RewriteCond %{HTTP:Authorization} ^(.*)$
-  RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
-
   # 资源板块 SPA fallback
   RewriteCond %{REQUEST_URI} ^/resources [NC]
   RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
