@@ -1,11 +1,16 @@
 import { useState, useEffect } from "react";
-import { Menu, X, Github } from "lucide-react";
+import { Menu, X, Github, Bell, LogOut, LayoutDashboard, Settings, User as UserIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/auth/UserMenu";
+import { useAuth } from "@/hooks/useAuth";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "首页", href: "/", active: "home", key: "home" },
+  { label: "资源", href: "/resources", active: "resources", key: "resources" },
+  { label: "论坛", href: "/forum", active: "forum", key: "forum" },
   { label: "安装", href: "/install.html", active: "install", key: "install" },
   { label: "公告", href: "/announcements.html", active: "announcements", key: "announcements" },
   // 统计页面已设为隐藏，仅可通过直接访问 /stats.html 进入（需 GitHub Token 验证）
@@ -17,9 +22,11 @@ interface NavbarProps {
 }
 
 export function Navbar({ forceActive }: NavbarProps = {}) {
+  const { user, isLoading, logout } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("home");
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // 滚动时为导航栏添加背景与底边
   useEffect(() => {
@@ -57,6 +64,35 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
 
     return () => observers.forEach((o) => o.disconnect());
   }, [forceActive]);
+
+  // 通知未读数轮询：登录后每 60 秒拉一次
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get<{ success: boolean; count: number }>(
+          "/account/notifications.php?unread=1",
+          { auth: true }
+        );
+        if (res.success) setUnreadCount(res.count);
+      } catch {
+        // 静默失败：不阻塞 UI
+      }
+    };
+    fetchUnread();
+    const timer = setInterval(fetchUnread, 60000);
+    return () => clearInterval(timer);
+  }, [user]);
+
+  const handleMobileLogout = () => {
+    setMobileOpen(false);
+    logout();
+    // 跳转首页（不使用 useNavigate，因为首页可能不在 Router 上下文中）
+    window.location.href = "/";
+  };
 
   return (
     <motion.header
@@ -116,6 +152,45 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
           >
             <Github className="h-5 w-5" />
           </a>
+
+          {/* 登录态切换区（桌面端） */}
+          {!isLoading && (
+            <div className="hidden md:flex items-center gap-2 ml-2">
+              {!user ? (
+                <a
+                  href="/account/sign-in"
+                  className="btn-blue btn-sm"
+                >
+                  登录
+                </a>
+              ) : (
+                <>
+                  {/* 通知图标 */}
+                  <a
+                    href="/account/notifications"
+                    className="icon-btn relative rounded p-2"
+                    aria-label={unreadCount > 0 ? `通知（${unreadCount} 条未读）` : "通知"}
+                  >
+                    <Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span
+                        className="absolute -top-0.5 -right-0.5 flex min-w-[16px] h-4 px-1 items-center justify-center rounded-full text-[10px] font-semibold"
+                        style={{
+                          background: "var(--destructive)",
+                          color: "var(--destructive-foreground)",
+                          lineHeight: 1,
+                        }}
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
+                  </a>
+                  <UserMenu />
+                </>
+              )}
+            </div>
+          )}
+
           <button
             type="button"
             className="icon-btn nav-toggle relative rounded p-2 md:hidden"
@@ -164,6 +239,84 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                   {link.label}
                 </a>
               ))}
+
+              {/* 分隔线 */}
+              <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
+
+              {/* 登录态相关入口 */}
+              {!isLoading && (
+                <>
+                  {user ? (
+                    <>
+                      <a
+                        href="/account/dashboard"
+                        onClick={() => setMobileOpen(false)}
+                        className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <LayoutDashboard size={16} /> 控制台
+                      </a>
+                      <a
+                        href="/account/notifications"
+                        onClick={() => setMobileOpen(false)}
+                        className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <Bell size={16} /> 通知
+                        {unreadCount > 0 && (
+                          <span
+                            className="ml-auto inline-flex min-w-[18px] h-[18px] px-1 items-center justify-center rounded-full text-[10px] font-semibold"
+                            style={{ background: "var(--destructive)", color: "var(--destructive-foreground)" }}
+                          >
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        )}
+                      </a>
+                      <a
+                        href="/account/settings"
+                        onClick={() => setMobileOpen(false)}
+                        className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <Settings size={16} /> 设置
+                      </a>
+                      <a
+                        href={`/account/profile/${user.username}`}
+                        onClick={() => setMobileOpen(false)}
+                        className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        <UserIcon size={16} /> 我的主页
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleMobileLogout}
+                        className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2 text-left"
+                        style={{ color: "var(--destructive)" }}
+                      >
+                        <LogOut size={16} /> 退出登录
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex flex-col gap-2 pt-2">
+                      <a
+                        href="/account/sign-in"
+                        onClick={() => setMobileOpen(false)}
+                        className="btn-blue btn-sm w-full"
+                      >
+                        登录
+                      </a>
+                      <a
+                        href="/account/sign-up"
+                        onClick={() => setMobileOpen(false)}
+                        className="btn-outline btn-sm w-full"
+                      >
+                        注册
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
             </nav>
           </motion.div>
         )}

@@ -23,8 +23,8 @@ interface StatsData {
   last_updated: string;
 }
 
-// 在线用户数字使用绿色（设计系统中暂无 --accent-green 变量，直接使用色值）
-const ACCENT_GREEN = "#10b981";
+// 在线用户数字使用绿色
+const ACCENT_GREEN = "var(--color-success)";
 
 function formatHours(hours: number): string {
   const h = Math.floor(hours);
@@ -120,7 +120,7 @@ export default function StatsPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("https://air-api.vercel.app/api/stats.php");
+      const response = await fetch("http://[2409:8a14:670:1e81:d9e2:38f5:7964:d1cb]:8080/api/stats.php");
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data = await response.json();
       setStats(data);

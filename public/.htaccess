@@ -1,0 +1,45 @@
+# Air 官网 SPA fallback 配置
+# InfinityFree Apache 服务器
+# 将 /resources/*、/forum/*、/account/*、/callback/* 等前端路由回退到对应 HTML 入口
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # 资源板块 SPA fallback
+  RewriteCond %{REQUEST_URI} ^/resources [NC]
+  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
+  RewriteRule ^ /resources.html [L]
+
+  # 论坛板块 SPA fallback
+  RewriteCond %{REQUEST_URI} ^/forum [NC]
+  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
+  RewriteRule ^ /forum.html [L]
+
+  # 账户板块 SPA fallback
+  RewriteCond %{REQUEST_URI} ^/account [NC]
+  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
+  RewriteRule ^ /account.html [L]
+
+  # OAuth 回调
+  RewriteCond %{REQUEST_URI} ^/callback [NC]
+  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
+  RewriteRule ^ /callback.html [L]
+</IfModule>
+
+# 安全头
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "SAMEORIGIN"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# 缓存静态资源
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 week"
+  ExpiresByType application/javascript "access plus 1 week"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/jpg "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+</IfModule>

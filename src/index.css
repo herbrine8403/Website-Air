@@ -79,6 +79,17 @@
     --btn-blue-fg: #ffffff;
     --ring: var(--accent-blue);
 
+    /* ===== 状态色（success / warning / purple / neutral） ===== */
+    --color-success: #16a34a;
+    --color-success-soft: #dcfce7;
+    --color-warning: #ea580c;
+    --color-warning-soft: #ffedd5;
+    --color-purple: #7c3aed;
+    --color-purple-soft: #ede9fe;
+    --color-neutral: #6b7280;
+    --color-danger-soft: #fee2e2;
+    --color-white: #ffffff;
+
     /* ===== Typography ===== */
     --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
     --font-serif: "DM Serif Display", ui-serif, Georgia, serif;
@@ -145,6 +156,17 @@
     --btn-bg: #4476d5;
     --btn-bg-hover: #3a66bf;
     --btn-blue-fg: #ffffff;
+
+    /* ===== 状态色（dark 主题覆盖） ===== */
+    --color-success: #22c55e;
+    --color-success-soft: #14532d;
+    --color-warning: #f97316;
+    --color-warning-soft: #7c2d12;
+    --color-purple: #a78bfa;
+    --color-purple-soft: #4c1d95;
+    --color-neutral: #9ca3af;
+    --color-danger-soft: #7f1d1d;
+    --color-white: #ffffff;
   }
 }
 
@@ -199,7 +221,9 @@
   .navbar[data-nav-active="announcements"] .nav-announcements,
   .navbar[data-nav-active="stats"] .nav-stats,
   .navbar[data-nav-active="screenshots"] .nav-screenshots,
-  .navbar[data-nav-active="about"] .nav-about {
+  .navbar[data-nav-active="about"] .nav-about,
+  .navbar[data-nav-active="resources"] .nav-resources,
+  .navbar[data-nav-active="forum"] .nav-forum {
     color: var(--accent-blue);
     font-weight: 600;
   }
@@ -305,6 +329,12 @@
   .btn-outline:hover { background: var(--muted); }
   .btn-outline:active { transform: scale(0.97); }
   .btn-outline:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+  /* 紧凑尺寸修饰符：用于导航栏等空间受限的场景 */
+  .btn-sm {
+    padding: 6px 14px;
+    font-size: 13px;
+  }
 
   /* ===== Footer links ===== */
   .footer-link {

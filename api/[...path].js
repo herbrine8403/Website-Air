@@ -10,10 +10,13 @@
  *   2. Add New Project → Import Git Repository → 选择 Website-Air 仓库
  *   3. Framework Preset 选 Vite（自动检测），其他默认，Deploy
  *   4. 部署完成后进入项目 Settings → General → Project Name 改为 air-api
- *   5. 访问 https://air-api.vercel.app/api/announcements.php 验证返回 JSON
- *   6. 将 Vercel 域名填入启动器 4 处 URL 和官网 StatsPage.tsx
+ *   5. 访问 http://[2409:8a14:670:1e81:d9e2:38f5:7964:d1cb]:8080/api/announcements.php 验证返回 JSON
+ *   6. 将 API 域名填入启动器 4 处 URL 和官网 StatsPage.tsx
  *   7. 若将来购买自定义域名，可在 Vercel → Settings → Domains 绑定，
- *      然后全局替换代码中的 air-api.vercel.app 即可
+ *      然后全局替换代码中的 API 地址即可
+ *
+ * 注意：当前后端已从 Vercel 迁移至 Android 手机 + IPv6 直连，
+ *       此文件仅作为历史备份保留，实际未部署到 Vercel。
  *
  * 路由设计：
  *   使用 Vercel catch-all route `api/[...path].js`，匹配所有 /api/* 请求

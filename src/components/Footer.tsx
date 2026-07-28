@@ -15,6 +15,33 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
   {
     title: "资源",
     links: [
+      { label: "资源中心", href: "/resources" },
+      { label: "上传资源", href: "/resources/upload" },
+      { label: "热门资源", href: "/resources/list?sort=popular" },
+      { label: "最新资源", href: "/resources/list?sort=newest" },
+    ],
+  },
+  {
+    title: "论坛",
+    links: [
+      { label: "论坛首页", href: "/forum" },
+      { label: "话题", href: "/forum/topics" },
+      { label: "文章", href: "/forum/articles" },
+      { label: "问答", href: "/forum/questions" },
+    ],
+  },
+  {
+    title: "账户",
+    links: [
+      { label: "登录", href: "/account/sign-in" },
+      { label: "注册", href: "/account/sign-up" },
+      { label: "控制台", href: "/account/dashboard" },
+      { label: "设置", href: "/account/settings" },
+    ],
+  },
+  {
+    title: "相关",
+    links: [
       {
         label: "GitHub",
         href: "https://github.com/herbrine8403/Amethyst-iOS-MyRemastered",
@@ -30,18 +57,11 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
         href: "https://github.com/herbrine8403/Amethyst-iOS-MyRemastered/releases",
         external: true,
       },
-      { label: "TrollStore 教程", href: "#" },
-    ],
-  },
-  {
-    title: "相关",
-    links: [
       {
         label: "Amethyst iOS",
         href: "https://github.com/AngelAuraMC/Amethyst-iOS",
         external: true,
       },
-      { label: "AltStore", href: "https://altstore.io", external: true },
     ],
   },
 ];
@@ -55,9 +75,10 @@ export function Footer() {
       }}
     >
       <div className="mx-auto max-w-[1280px] px-6 py-12">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
-          {/* 品牌 */}
-          <div>
+        {/* 桌面端：6 列网格，品牌占 2 列；移动端：2 列 */}
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-6">
+          {/* 品牌（占 2 列宽度） */}
+          <div className="col-span-2">
             <div
               className="text-lg font-bold"
               style={{

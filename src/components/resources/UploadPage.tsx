@@ -1,0 +1,1244 @@
+import { useState, useCallback, type FormEvent, type DragEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Upload as UploadIcon,
+  FileText,
+  Download,
+  Clock,
+  Check,
+  X,
+  AlertTriangle,
+  ImageIcon,
+  Loader2,
+  ArrowRight,
+  ArrowLeft,
+  Info,
+  Package,
+  Zap,
+  Sun,
+  Monitor,
+  AppWindow,
+  File as FileIcon,
+} from 'lucide-react';
+import { api, ApiError } from '@/lib/api';
+import {
+  RESOURCE_TYPES,
+  PageContainer,
+} from './shared';
+
+type StepKey = 1 | 2 | 3;
+const STEPS: Array<{ key: StepKey; label: string; desc: string }> = [
+  { key: 1, label: '基本信息', desc: '名称与分类' },
+  { key: 2, label: '文件上传', desc: '资源文件' },
+  { key: 3, label: '版本信息', desc: '版本与兼容' },
+];
+
+const IOS_TAGS = ['iOS移植', '修改版', '触屏适配', 'AirPack', 'TrollStore'];
+const LOADERS = ['Fabric', 'Forge', 'NeoForge', 'Quilt', 'LiteLoader'];
+const GAME_VERSIONS = ['1.20.1', '1.20.4', '1.20.6', '1.21', '1.21.1', '26.1', '26.2', '1.19.2', '1.18.2', '1.16.5', '1.12.2'];
+const ALLOWED_EXTENSIONS = ['.mrpack', '.airpack', '.jar', '.zip', '.ipa', '.tipa', '.mcpack'];
+
+interface UploadedFile {
+  name: string;
+  size: string;
+  progress: number;
+  status: 'uploading' | 'done';
+}
+
+interface SourceState {
+  modrinth: { enabled: boolean; url: string };
+  curseforge: { enabled: boolean; url: string };
+  github: { enabled: boolean; url: string };
+  air: { enabled: boolean };
+}
+
+interface FormState {
+  name: string;
+  summary: string;
+  description: string;
+  type: string;
+  tags: string[];
+  coverUrl: string;
+  versionNumber: string;
+  versionType: 'release' | 'beta' | 'alpha';
+  loaders: string[];
+  gameVersions: string[];
+  changelog: string;
+  sources: SourceState;
+}
+
+const INITIAL_FORM: FormState = {
+  name: '',
+  summary: '',
+  description: '',
+  type: 'modpack',
+  tags: [],
+  coverUrl: '',
+  versionNumber: '1.0.0',
+  versionType: 'release',
+  loaders: [],
+  gameVersions: [],
+  changelog: '',
+  sources: {
+    modrinth: { enabled: false, url: '' },
+    curseforge: { enabled: false, url: '' },
+    github: { enabled: false, url: '' },
+    air: { enabled: false },
+  },
+};
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000) return (bytes / 1_000_000_000).toFixed(1) + ' GB';
+  if (bytes >= 1_000_000) return (bytes / 1_000_000).toFixed(1) + ' MB';
+  if (bytes >= 1_000) return (bytes / 1_000).toFixed(1) + ' KB';
+  return bytes + ' B';
+}
+
+export default function UploadPage() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState<StepKey>(1);
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [coverDragOver, setCoverDragOver] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const updateForm = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const toggleArrayValue = useCallback((key: 'tags' | 'loaders' | 'gameVersions', value: string) => {
+    setForm((prev) => {
+      const arr = prev[key];
+      const next = arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  const toggleSource = useCallback((key: keyof SourceState) => {
+    setForm((prev) => ({
+      ...prev,
+      sources: {
+        ...prev.sources,
+        [key]: {
+          ...prev.sources[key],
+          enabled: !prev.sources[key].enabled,
+        },
+      },
+    }));
+  }, []);
+
+  const updateSourceUrl = useCallback((key: 'modrinth' | 'curseforge' | 'github', url: string) => {
+    setForm((prev) => ({
+      ...prev,
+      sources: {
+        ...prev.sources,
+        [key]: { ...prev.sources[key], url },
+      },
+    }));
+  }, []);
+
+  const handleFileDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragOver(false);
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      droppedFiles.forEach((file) => {
+        const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+        if (!ALLOWED_EXTENSIONS.includes(ext)) {
+          alert(`不支持的文件格式: ${file.name}（仅支持 ${ALLOWED_EXTENSIONS.join(', ')}）`);
+          return;
+        }
+        // 模拟上传（Air 官网对象存储暂未上线）
+        const newFile: UploadedFile = {
+          name: file.name,
+          size: formatBytes(file.size),
+          progress: 0,
+          status: 'uploading',
+        };
+        setFiles((prev) => [...prev, newFile]);
+        // 模拟进度
+        const interval = setInterval(() => {
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.name === newFile.name
+                ? {
+                    ...f,
+                    progress: Math.min(100, f.progress + 10),
+                    status: f.progress + 10 >= 100 ? 'done' : 'uploading',
+                  }
+                : f
+            )
+          );
+        }, 200);
+        setTimeout(() => clearInterval(interval), 2500);
+      });
+    },
+    []
+  );
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(e.target.files || []);
+    selectedFiles.forEach((file) => {
+      const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        alert(`不支持的文件格式: ${file.name}（仅支持 ${ALLOWED_EXTENSIONS.join(', ')}）`);
+        return;
+      }
+      const newFile: UploadedFile = {
+        name: file.name,
+        size: formatBytes(file.size),
+        progress: 0,
+        status: 'uploading',
+      };
+      setFiles((prev) => [...prev, newFile]);
+      const interval = setInterval(() => {
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === newFile.name
+              ? {
+                  ...f,
+                  progress: Math.min(100, f.progress + 10),
+                  status: f.progress + 10 >= 100 ? 'done' : 'uploading',
+                }
+              : f
+          )
+        );
+      }, 200);
+      setTimeout(() => clearInterval(interval), 2500);
+    });
+    // 清空 input 允许重新选择
+    e.target.value = '';
+  }, []);
+
+  const removeFile = useCallback((name: string) => {
+    setFiles((prev) => prev.filter((f) => f.name !== name));
+  }, []);
+
+  // 步骤校验
+  const canProceedStep1 = form.name.trim().length >= 3 && form.summary.trim() && form.description.trim() && form.type;
+  const canProceedStep2 = true; // 文件上传非必须（因为对象存储未上线）
+  const canSubmit =
+    form.versionNumber.trim() &&
+    form.loaders.length > 0 &&
+    form.gameVersions.length > 0 &&
+    // 至少一个下载源
+    (form.sources.modrinth.enabled ||
+      form.sources.curseforge.enabled ||
+      form.sources.github.enabled ||
+      form.sources.air.enabled) &&
+    // 启用的外部源必须有 URL
+    (!form.sources.modrinth.enabled || form.sources.modrinth.url.trim()) &&
+    (!form.sources.curseforge.enabled || form.sources.curseforge.url.trim()) &&
+    (!form.sources.github.enabled || form.sources.github.url.trim());
+
+  const handleSubmit = useCallback(
+    async (e: FormEvent) => {
+      e.preventDefault();
+      if (!canSubmit) return;
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        // 1. 创建资源
+        const createPayload = {
+          name: form.name,
+          summary: form.summary,
+          description: form.description,
+          type: form.type,
+          tags: form.tags,
+          cover_url: form.coverUrl || null,
+        };
+        const createRes = await api.post<{ success: boolean; slug?: string; id?: string | number }>(
+          '/resources/create.php',
+          createPayload
+        );
+        const resourceSlug = createRes.slug;
+        const resourceId = createRes.id;
+        if (!resourceSlug && !resourceId) {
+          throw new Error('创建资源失败：未返回标识');
+        }
+
+        // 2. 创建版本
+        const versionSources: Array<{ source: string; url?: string }> = [];
+        if (form.sources.modrinth.enabled && form.sources.modrinth.url) {
+          versionSources.push({ source: 'modrinth', url: form.sources.modrinth.url });
+        }
+        if (form.sources.curseforge.enabled && form.sources.curseforge.url) {
+          versionSources.push({ source: 'curseforge', url: form.sources.curseforge.url });
+        }
+        if (form.sources.github.enabled && form.sources.github.url) {
+          versionSources.push({ source: 'github', url: form.sources.github.url });
+        }
+        if (form.sources.air.enabled) {
+          versionSources.push({ source: 'air' });
+        }
+
+        const versionPayload = {
+          resource_id: resourceId,
+          resource_slug: resourceSlug,
+          version_number: form.versionNumber,
+          version_type: form.versionType,
+          loaders: form.loaders,
+          game_versions: form.gameVersions,
+          changelog: form.changelog,
+          sources: versionSources,
+        };
+        await api.post<{ success: boolean }>('/resources/version-create.php', versionPayload);
+
+        // 3. 跳转详情页
+        const targetSlug = resourceSlug || String(resourceId);
+        navigate(`/resources/detail?slug=${encodeURIComponent(targetSlug)}`);
+      } catch (err) {
+        if (err instanceof ApiError) setSubmitError(err.message);
+        else if (err instanceof Error) setSubmitError(err.message);
+        else setSubmitError('提交失败，请重试');
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [form, canSubmit, navigate]
+  );
+
+  return (
+    <PageContainer>
+      {/* 页面头部 */}
+      <section
+        className="flex flex-col gap-3"
+        style={{ paddingTop: 40, paddingBottom: 32 }}
+      >
+        <div
+          className="inline-flex items-center gap-2"
+          style={{
+            color: 'var(--muted-foreground)',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 12,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+          }}
+        >
+          <span
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: 'var(--accent-blue)',
+            }}
+          />
+          <span>Resources / Upload</span>
+        </div>
+        <h1
+          style={{
+            fontFamily: 'var(--font-serif)',
+            fontSize: 40,
+            lineHeight: 1.1,
+            color: 'var(--foreground)',
+            letterSpacing: 'var(--tracking-tight)',
+            margin: 0,
+          }}
+        >
+          上传资源
+        </h1>
+        <p style={{ fontSize: 16, color: 'var(--muted-foreground)', margin: 0 }}>
+          分享你的资源与社区
+        </p>
+      </section>
+
+      <div className="grid gap-7" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'flex-start' }}>
+        {/* 左侧表单 */}
+        <div className="flex flex-col gap-7">
+          {/* 步骤指示器 */}
+          <div
+            className="flex items-center gap-2 p-5 rounded-lg"
+            style={{
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            {STEPS.map((s, idx) => (
+              <div key={s.key} className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <span
+                    className="inline-flex items-center justify-center flex-shrink-0"
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: '50%',
+                      background:
+                        step > s.key
+                          ? 'var(--color-success)'
+                          : step === s.key
+                          ? 'var(--accent-blue)'
+                          : 'var(--muted)',
+                      color: 'var(--color-white)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {step > s.key ? <Check size={14} /> : s.key}
+                  </span>
+                  <div className="flex flex-col min-w-0">
+                    <span
+                      className="text-sm font-semibold truncate"
+                      style={{
+                        color: step >= s.key ? 'var(--foreground)' : 'var(--muted-foreground)',
+                      }}
+                    >
+                      {s.label}
+                    </span>
+                    <span
+                      className="text-xs truncate"
+                      style={{ color: 'var(--muted-foreground)' }}
+                    >
+                      {s.desc}
+                    </span>
+                  </div>
+                </div>
+                {idx < STEPS.length - 1 && (
+                  <div
+                    style={{
+                      width: 24,
+                      height: 2,
+                      background: 'var(--border)',
+                      borderRadius: 1,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* 步骤 1：基本信息 */}
+          <FormSection
+            icon={<FileText size={20} />}
+            title="基本信息"
+            subtitle="填写资源名称、描述与分类"
+            stepBadge="步骤 1 / 3"
+            active={step === 1}
+          >
+            <div className="form-group">
+              <label className="form-label">
+                资源名称<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => updateForm('name', e.target.value)}
+                placeholder="如 Fabulously Optimized for iOS"
+                className="form-input"
+              />
+              <span className="form-hint">3-80 个字符</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                简短描述<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.summary}
+                onChange={(e) => updateForm('summary', e.target.value)}
+                placeholder="一句话描述你的资源"
+                className="form-input"
+              />
+              <span className="form-hint">显示在资源列表中</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                详细描述<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <textarea
+                value={form.description}
+                onChange={(e) => updateForm('description', e.target.value)}
+                rows={6}
+                placeholder="支持 Markdown 格式，详细描述你的资源特性、使用方法等"
+                className="form-textarea"
+              />
+              <span className="form-hint">支持 Markdown 格式</span>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                资源分类<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                选择资源所属分类
+              </span>
+              <div
+                className="grid gap-2"
+                style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
+              >
+                {RESOURCE_TYPES.map((t) => {
+                  const Icon = t.icon;
+                  const selected = form.type === t.key;
+                  return (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => updateForm('type', t.key)}
+                      className="flex flex-col gap-1 p-3 rounded-lg text-left transition-all"
+                      style={{
+                        background: selected ? 'var(--accent-blue-soft)' : 'var(--background)',
+                        border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--border)'}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span
+                        className="inline-flex items-center justify-center"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 'var(--radius-sm)',
+                          background: selected ? 'var(--accent-blue)' : 'var(--muted)',
+                          color: selected ? 'var(--accent-blue-foreground)' : 'var(--accent-blue)',
+                        }}
+                      >
+                        <Icon size={16} />
+                      </span>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: 'var(--foreground)' }}
+                      >
+                        {t.label}
+                      </span>
+                      <span
+                        className="text-xs"
+                        style={{ color: 'var(--muted-foreground)' }}
+                      >
+                        {t.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">标签</label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                为资源添加标签，方便用户搜索
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {IOS_TAGS.map((tag) => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleArrayValue('tags', tag)}
+                    className={`badge ${form.tags.includes(tag) ? 'tag-active' : 'badge-outline'}`}
+                    style={{
+                      cursor: 'pointer',
+                      border: '1px solid var(--border-strong)',
+                      padding: '4px 10px',
+                      fontSize: 12,
+                    }}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">封面图片</label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                输入图片 URL（建议尺寸 1280×720，支持 PNG/JPG）
+              </span>
+              <input
+                type="url"
+                value={form.coverUrl}
+                onChange={(e) => updateForm('coverUrl', e.target.value)}
+                placeholder="https://example.com/cover.png"
+                className="form-input"
+                style={{ marginBottom: 12 }}
+              />
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setCoverDragOver(true);
+                }}
+                onDragLeave={() => setCoverDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setCoverDragOver(false);
+                  // 仅做提示，因为对象存储未上线
+                  alert('Air 官网对象存储即将上线，目前请使用外部 URL');
+                }}
+                className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg"
+                style={{
+                  border: `2px dashed ${coverDragOver ? 'var(--accent-blue)' : 'var(--border-strong)'}`,
+                  background: 'var(--background)',
+                  color: 'var(--muted-foreground)',
+                  textAlign: 'center',
+                }}
+              >
+                <ImageIcon size={22} />
+                <span className="text-sm">点击或拖拽上传封面图片</span>
+                <span className="text-xs">PNG / JPG · 最大 5MB · 推荐 16:9</span>
+              </div>
+            </div>
+
+            {step === 1 && (
+              <div className="flex justify-end mt-4">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  disabled={!canProceedStep1}
+                  className="btn-blue"
+                >
+                  下一步
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            )}
+          </FormSection>
+
+          {/* 步骤 2：文件上传 */}
+          <FormSection
+            icon={<UploadIcon size={20} />}
+            title="文件上传"
+            subtitle="上传资源文件"
+            stepBadge="步骤 2 / 3"
+            active={step === 2}
+          >
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleFileDrop}
+              className="flex flex-col items-center justify-center gap-3 py-10 rounded-lg cursor-pointer"
+              style={{
+                border: `2px dashed ${dragOver ? 'var(--accent-blue)' : 'var(--border-strong)'}`,
+                background: 'var(--background)',
+                color: 'var(--muted-foreground)',
+                textAlign: 'center',
+              }}
+              onClick={() => document.getElementById('file-input')?.click()}
+            >
+              <UploadIcon size={24} style={{ color: 'var(--accent-blue)' }} />
+              <span className="text-sm" style={{ color: 'var(--foreground)', fontWeight: 500 }}>
+                点击或拖拽文件到此处上传
+              </span>
+              <span className="text-xs">
+                支持格式：{ALLOWED_EXTENSIONS.join(', ')} · 单文件最大 1GB
+              </span>
+              <input
+                id="file-input"
+                type="file"
+                multiple
+                accept={ALLOWED_EXTENSIONS.join(',')}
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+            </div>
+
+            {/* 提示 */}
+            <div
+              className="flex items-start gap-2 mt-4 p-3 rounded-lg text-sm"
+              style={{
+                background: 'var(--accent-blue-soft)',
+                color: 'var(--accent-blue)',
+              }}
+            >
+              <Info size={16} className="flex-shrink-0 mt-0.5" />
+              <span>
+                Air 官网对象存储即将上线，目前请使用外部下载源（Modrinth / CurseForge / GitHub）。
+                此处的文件上传仅作演示，不会真实存储。
+              </span>
+            </div>
+
+            {/* 已上传文件列表 */}
+            {files.length > 0 && (
+              <div className="flex flex-col gap-2 mt-4">
+                {files.map((f) => (
+                  <div
+                    key={f.name}
+                    className="flex items-center gap-3 p-3 rounded-lg"
+                    style={{
+                      background: 'var(--background)',
+                      border: '1px solid var(--border)',
+                    }}
+                  >
+                    <span
+                      className="inline-flex items-center justify-center flex-shrink-0"
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'var(--accent-blue-soft)',
+                        color: 'var(--accent-blue)',
+                      }}
+                    >
+                      <Package size={18} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div
+                        className="text-sm truncate"
+                        style={{ color: 'var(--foreground)', fontWeight: 500 }}
+                      >
+                        {f.name}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 text-xs" style={{ color: 'var(--muted-foreground)' }}>
+                        <span>{f.size}</span>
+                        <span
+                          className="inline-flex items-center gap-1"
+                          style={{
+                            color: f.status === 'done' ? 'var(--color-success)' : 'var(--accent-blue)',
+                          }}
+                        >
+                          {f.status === 'done' ? <Check size={12} /> : <Clock size={12} className="animate-spin" />}
+                          {f.status === 'done' ? '上传完成' : `上传中 ${f.progress}%`}
+                        </span>
+                      </div>
+                      <div
+                        className="mt-1.5 rounded"
+                        style={{ background: 'var(--muted)', height: 4, overflow: 'hidden' }}
+                      >
+                        <div
+                          style={{
+                            width: `${f.progress}%`,
+                            height: '100%',
+                            background: f.status === 'done' ? 'var(--color-success)' : 'var(--accent-blue)',
+                            transition: 'width 0.2s ease',
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(f.name)}
+                      title="移除"
+                      className="p-1.5 rounded flex-shrink-0"
+                      style={{ color: 'var(--muted-foreground)', cursor: 'pointer' }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="flex justify-between mt-4">
+                <button type="button" onClick={() => setStep(1)} className="btn-outline">
+                  <ArrowLeft size={14} />
+                  上一步
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  disabled={!canProceedStep2}
+                  className="btn-blue"
+                >
+                  下一步
+                  <ArrowRight size={14} />
+                </button>
+              </div>
+            )}
+          </FormSection>
+
+          {/* 步骤 3：版本信息 */}
+          <FormSection
+            icon={<Clock size={20} />}
+            title="版本信息"
+            subtitle="版本号、兼容性与更新日志"
+            stepBadge="步骤 3 / 3"
+            active={step === 3}
+          >
+            <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="form-group">
+                <label className="form-label">
+                  版本号<span style={{ color: 'var(--destructive)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.versionNumber}
+                  onChange={(e) => updateForm('versionNumber', e.target.value)}
+                  placeholder="如 1.0.0"
+                  className="form-input"
+                />
+                <span className="form-hint">如 1.0.0</span>
+              </div>
+              <div className="form-group">
+                <label className="form-label">版本类型</label>
+                <div className="flex gap-1 mt-1">
+                  {([
+                    { key: 'release', label: '正式版' },
+                    { key: 'beta', label: 'Beta' },
+                    { key: 'alpha', label: '快照' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => updateForm('versionType', opt.key)}
+                      className="flex-1 py-2 text-sm rounded transition-colors"
+                      style={{
+                        background:
+                          form.versionType === opt.key ? 'var(--accent-blue)' : 'transparent',
+                        color: form.versionType === opt.key ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
+                        border: `1px solid ${form.versionType === opt.key ? 'var(--accent-blue)' : 'var(--border)'}`,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                支持加载器<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                选择该版本支持的加载器（可多选）
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {LOADERS.map((l) => (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => toggleArrayValue('loaders', l)}
+                    className="badge inline-flex items-center gap-1"
+                    style={{
+                      cursor: 'pointer',
+                      background: form.loaders.includes(l) ? 'var(--accent-blue)' : 'transparent',
+                      color: form.loaders.includes(l) ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
+                      border: '1px solid var(--border-strong)',
+                      padding: '5px 12px',
+                      fontSize: 12,
+                    }}
+                  >
+                    {form.loaders.includes(l) && <Check size={12} />}
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
+                支持 MC 版本<span style={{ color: 'var(--destructive)' }}>*</span>
+              </label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                选择该版本兼容的 Minecraft 版本（可多选）
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {GAME_VERSIONS.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => toggleArrayValue('gameVersions', v)}
+                    className="badge inline-flex items-center gap-1"
+                    style={{
+                      cursor: 'pointer',
+                      background: form.gameVersions.includes(v) ? 'var(--accent-blue)' : 'transparent',
+                      color: form.gameVersions.includes(v) ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
+                      border: '1px solid var(--border-strong)',
+                      padding: '5px 12px',
+                      fontSize: 12,
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {form.gameVersions.includes(v) && <Check size={12} />}
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">更新日志</label>
+              <textarea
+                value={form.changelog}
+                onChange={(e) => updateForm('changelog', e.target.value)}
+                rows={5}
+                placeholder="描述这个版本的更新内容，支持 Markdown"
+                className="form-textarea"
+              />
+              <span className="form-hint">描述这个版本的更新内容，支持 Markdown</span>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label className="form-label">下载源</label>
+              <span className="form-hint" style={{ marginBottom: 8 }}>
+                选择文件提供的下载源（可多选）
+              </span>
+              <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                <SourcePickerCard
+                  label="Modrinth"
+                  color="var(--color-success)"
+                  badgeClass="source-modrinth"
+                  enabled={form.sources.modrinth.enabled}
+                  onToggle={() => toggleSource('modrinth')}
+                  url={form.sources.modrinth.url}
+                  onUrlChange={(u) => updateSourceUrl('modrinth', u)}
+                />
+                <SourcePickerCard
+                  label="CurseForge"
+                  color="var(--color-warning)"
+                  badgeClass="source-curseforge"
+                  enabled={form.sources.curseforge.enabled}
+                  onToggle={() => toggleSource('curseforge')}
+                  url={form.sources.curseforge.url}
+                  onUrlChange={(u) => updateSourceUrl('curseforge', u)}
+                />
+                <SourcePickerCard
+                  label="GitHub"
+                  color="var(--color-neutral)"
+                  badgeClass="source-official"
+                  enabled={form.sources.github.enabled}
+                  onToggle={() => toggleSource('github')}
+                  url={form.sources.github.url}
+                  onUrlChange={(u) => updateSourceUrl('github', u)}
+                />
+                {/* TODO: 对象存储配置后启用 */}
+                <SourcePickerCard
+                  label="Air 官网"
+                  color="var(--accent-blue)"
+                  badgeClass="source-bmclapi"
+                  enabled={form.sources.air.enabled}
+                  onToggle={() => toggleSource('air')}
+                  airStorage
+                />
+              </div>
+            </div>
+
+            {submitError && (
+              <div
+                className="mt-4 flex items-center gap-2 p-3 rounded-lg text-sm"
+                style={{
+                  background: 'rgba(220, 38, 38, 0.08)',
+                  border: '1px solid rgba(220, 38, 38, 0.2)',
+                  color: 'var(--destructive)',
+                }}
+              >
+                <AlertTriangle size={16} />
+                <span>{submitError}</span>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="flex justify-between mt-4">
+                <button type="button" onClick={() => setStep(2)} className="btn-outline">
+                  <ArrowLeft size={14} />
+                  上一步
+                </button>
+                <button
+                  type="submit"
+                  onClick={handleSubmit}
+                  disabled={!canSubmit || submitting}
+                  className="btn-blue"
+                >
+                  {submitting ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  提交
+                </button>
+              </div>
+            )}
+          </FormSection>
+
+          {/* 底部提示 */}
+          <div
+            className="flex items-center justify-between gap-3 flex-wrap p-4 rounded-lg"
+            style={{
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <span
+              className="inline-flex items-center gap-2 text-xs"
+              style={{ color: 'var(--muted-foreground)' }}
+            >
+              <AlertTriangle size={14} style={{ color: 'var(--color-warning)' }} />
+              提交后立即发布，资源将在资源中心展示
+            </span>
+            <div className="flex gap-2">
+              <Link to="/resources" className="btn-outline btn-sm">
+                取消
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* 右侧指南 */}
+        <aside className="flex flex-col gap-5" style={{ position: 'sticky', top: 84 }}>
+          {/* 上传须知 */}
+          <GuideCard title="上传须知" icon={<AlertTriangle size={18} />}>
+            <ul className="flex flex-col gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>确保你<strong>有权上传</strong>该资源，尊重原作者版权</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>资源<strong>不得包含恶意代码</strong>或破坏性脚本</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--color-warning)', flexShrink: 0 }}>·</span>
+                <span>iOS 移植资源<strong>需注明原作者</strong>及来源链接</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>上传后立即可见</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>资源提交后立即在<strong>资源中心</strong>展示</span>
+              </li>
+            </ul>
+          </GuideCard>
+
+          {/* 支持的格式 */}
+          <GuideCard title="支持的格式" icon={<FileText size={18} />}>
+            <div className="flex flex-col gap-1.5 text-sm">
+              {[
+                { type: '整合包', ext: '.mrpack .airpack' },
+                { type: 'Mod', ext: '.jar' },
+                { type: '光影包', ext: '.zip' },
+                { type: '渲染器', ext: '.zip' },
+                { type: '软件', ext: '.ipa .tipa' },
+                { type: '其他', ext: '.zip .mcpack' },
+              ].map((row) => (
+                <div
+                  key={row.type}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span style={{ color: 'var(--muted-foreground)' }}>{row.type}</span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 12,
+                      color: 'var(--foreground)',
+                    }}
+                  >
+                    {row.ext}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </GuideCard>
+
+          {/* AirPack 格式说明 */}
+          <GuideCard title="AirPack 格式说明" icon={<Package size={18} />}>
+            <ul className="flex flex-col gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>AirPack 是 <strong>Air 启动器独有</strong>格式</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>包含完整<strong>游戏目录</strong> + 偏好设置 + 按键布局</span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>文件扩展名：<strong>.airpack</strong></span>
+              </li>
+              <li className="flex gap-2">
+                <span style={{ color: 'var(--accent-blue)', flexShrink: 0 }}>·</span>
+                <span>仅支持在 <strong>Air 启动器</strong>中导入</span>
+              </li>
+            </ul>
+            <div
+              className="mt-3 flex gap-2 p-2.5 rounded text-xs"
+              style={{
+                background: 'var(--muted)',
+                color: 'var(--muted-foreground)',
+              }}
+            >
+              <Info size={14} className="flex-shrink-0 mt-0.5" />
+              <span>AirPack 适合分享完整游戏环境，体积通常大于 .mrpack</span>
+            </div>
+          </GuideCard>
+        </aside>
+      </div>
+
+      {/* 隐藏占位以消除未使用警告 */}
+      <span style={{ display: 'none' }} aria-hidden>
+        <Download size={0} />
+        <Zap size={0} />
+        <Sun size={0} />
+        <Monitor size={0} />
+        <AppWindow size={0} />
+        <FileIcon size={0} />
+      </span>
+    </PageContainer>
+  );
+}
+
+/* ============ 子组件 ============ */
+
+function FormSection({
+  icon,
+  title,
+  subtitle,
+  stepBadge,
+  active,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  stepBadge: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="rounded-lg p-6"
+      style={{
+        background: 'var(--card)',
+        border: `1px solid ${active ? 'var(--accent-blue)' : 'var(--border)'}`,
+        boxShadow: 'var(--shadow-sm)',
+        opacity: active ? 1 : 0.7,
+      }}
+    >
+      <div
+        className="flex items-center gap-3 mb-5 pb-4"
+        style={{ borderBottom: '1px solid var(--border)' }}
+      >
+        <span
+          className="inline-flex items-center justify-center flex-shrink-0"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--accent-blue-soft)',
+            color: 'var(--accent-blue)',
+          }}
+        >
+          {icon}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>
+            {title}
+          </div>
+          <div className="text-xs" style={{ color: 'var(--muted-foreground)' }}>
+            {subtitle}
+          </div>
+        </div>
+        <span
+          className="text-xs px-2 py-1 rounded"
+          style={{
+            background: 'var(--muted)',
+            color: 'var(--muted-foreground)',
+            fontFamily: 'var(--font-mono)',
+          }}
+        >
+          {stepBadge}
+        </span>
+      </div>
+      <form onSubmit={(e) => e.preventDefault()}>{children}</form>
+    </section>
+  );
+}
+
+function GuideCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-lg p-5"
+      style={{
+        background: 'var(--card)',
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      <h3
+        className="mb-3 inline-flex items-center gap-2"
+        style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)' }}
+      >
+        <span style={{ color: 'var(--accent-blue)' }}>{icon}</span>
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function SourcePickerCard({
+  label,
+  color,
+  badgeClass,
+  enabled,
+  onToggle,
+  url,
+  onUrlChange,
+  airStorage,
+}: {
+  label: string;
+  color: string;
+  badgeClass: string;
+  enabled: boolean;
+  onToggle: () => void;
+  url?: string;
+  onUrlChange?: (url: string) => void;
+  airStorage?: boolean;
+}) {
+  return (
+    <div
+      className="rounded-lg p-3"
+      style={{
+        background: enabled ? 'var(--accent-blue-soft)' : 'var(--background)',
+        border: `1px solid ${enabled ? 'var(--accent-blue)' : 'var(--border)'}`,
+      }}
+    >
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={onToggle}
+          style={{ width: 16, height: 16, accentColor: 'var(--accent-blue)' }}
+        />
+        <span className={`source-label ${badgeClass}`} style={{ fontSize: 11 }}>
+          {label}
+        </span>
+        <span
+          className="text-sm font-semibold flex-1"
+          style={{ color: 'var(--foreground)' }}
+        >
+          {label}
+        </span>
+      </label>
+      {enabled && !airStorage && onUrlChange && (
+        <input
+          type="url"
+          value={url || ''}
+          onChange={(e) => onUrlChange(e.target.value)}
+          placeholder={`${label} URL`}
+          className="form-input mt-2"
+          style={{ fontSize: 12, padding: '6px 10px' }}
+          required
+        />
+      )}
+      {/* TODO: 对象存储配置后启用 */}
+      {enabled && airStorage && (
+        <div
+          className="mt-2 text-center py-2 px-3 rounded text-xs"
+          style={{
+            background: 'var(--muted)',
+            color: 'var(--muted-foreground)',
+            border: '1px dashed var(--border-strong)',
+          }}
+        >
+          对象存储即将上线
+        </div>
+      )}
+    </div>
+  );
+}
