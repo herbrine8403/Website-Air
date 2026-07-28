@@ -33,7 +33,7 @@ function CallbackInner() {
         .then(() => {
           setState({ kind: 'success' });
           setTimeout(() => {
-            window.location.href = '/account/dashboard';
+            window.location.href = '/account.html#/account/dashboard';
           }, 300);
         })
         .catch(() => {
@@ -175,7 +175,7 @@ function CallbackInner() {
           )}
 
           <div className="text-center mt-6">
-            <a href="/account/sign-in" className="text-sm" style={{ color: 'var(--accent-blue)', fontWeight: 500 }}>
+            <a href="/account.html#/account/sign-in" className="text-sm" style={{ color: 'var(--accent-blue)', fontWeight: 500 }}>
               返回登录
             </a>
           </div>
@@ -206,7 +206,7 @@ function CallbackInner() {
         <p className="text-center text-sm" style={{ color: 'var(--muted-foreground)', marginBottom: 28, lineHeight: 1.6 }}>
           {state.message}
         </p>
-        <a href="/account/sign-in" className="btn-blue btn-block">
+        <a href="/account.html#/account/sign-in" className="btn-blue btn-block">
           返回登录
         </a>
       </main>

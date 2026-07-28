@@ -1239,7 +1239,7 @@ function DeleteAccountSection() {
       // 后端可能要求密码校验，尝试 POST 等价端点
       await api.post('/account/delete.php', { password });
       // 退出登录
-      window.location.href = '/account/sign-in';
+      window.location.href = '/account.html#/account/sign-in';
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : '删除账户失败');
     } finally {

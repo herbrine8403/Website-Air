@@ -7,7 +7,7 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
     title: "产品",
     links: [
       { label: "首页", href: "/" },
-      { label: "安装", href: "/install" },
+      { label: "安装", href: "/install.html" },
       { label: "公告", href: "/announcements.html" },
       // 统计页面已设为隐藏（需管理员权限）
     ],
@@ -15,28 +15,28 @@ const footerGroups: { title: string; links: FooterLinkItem[] }[] = [
   {
     title: "资源",
     links: [
-      { label: "资源中心", href: "/resources" },
-      { label: "上传资源", href: "/resources/upload" },
-      { label: "热门资源", href: "/resources/list?sort=popular" },
-      { label: "最新资源", href: "/resources/list?sort=newest" },
+      { label: "资源中心", href: "/resources.html" },
+      { label: "上传资源", href: "/resources.html#/resources/upload" },
+      { label: "热门资源", href: "/resources.html#/resources/list?sort=popular" },
+      { label: "最新资源", href: "/resources.html#/resources/list?sort=newest" },
     ],
   },
   {
     title: "论坛",
     links: [
-      { label: "论坛首页", href: "/forum" },
-      { label: "话题", href: "/forum/topics" },
-      { label: "文章", href: "/forum/articles" },
-      { label: "问答", href: "/forum/questions" },
+      { label: "论坛首页", href: "/forum.html" },
+      { label: "话题", href: "/forum.html#/forum/topics" },
+      { label: "文章", href: "/forum.html#/forum/articles" },
+      { label: "问答", href: "/forum.html#/forum/questions" },
     ],
   },
   {
     title: "账户",
     links: [
-      { label: "登录", href: "/account/sign-in" },
-      { label: "注册", href: "/account/sign-up" },
-      { label: "控制台", href: "/account/dashboard" },
-      { label: "设置", href: "/account/settings" },
+      { label: "登录", href: "/account.html#/account/sign-in" },
+      { label: "注册", href: "/account.html#/account/sign-up" },
+      { label: "控制台", href: "/account.html#/account/dashboard" },
+      { label: "设置", href: "/account.html#/account/settings" },
     ],
   },
   {

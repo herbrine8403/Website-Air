@@ -9,8 +9,8 @@ import { cn } from "@/lib/utils";
 
 const navLinks = [
   { label: "首页", href: "/", active: "home", key: "home" },
-  { label: "资源", href: "/resources", active: "resources", key: "resources" },
-  { label: "论坛", href: "/forum", active: "forum", key: "forum" },
+  { label: "资源", href: "/resources.html", active: "resources", key: "resources" },
+  { label: "论坛", href: "/forum.html", active: "forum", key: "forum" },
   { label: "安装", href: "/install.html", active: "install", key: "install" },
   { label: "公告", href: "/announcements.html", active: "announcements", key: "announcements" },
   // 统计页面已设为隐藏，仅可通过直接访问 /stats.html 进入（需 GitHub Token 验证）
@@ -158,7 +158,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
             <div className="hidden md:flex items-center gap-2 ml-2">
               {!user ? (
                 <a
-                  href="/account/sign-in"
+                  href="/account.html#/account/sign-in"
                   className="btn-blue btn-sm"
                 >
                   登录
@@ -167,7 +167,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                 <>
                   {/* 通知图标 */}
                   <a
-                    href="/account/notifications"
+                    href="/account.html#/account/notifications"
                     className="icon-btn relative rounded p-2"
                     aria-label={unreadCount > 0 ? `通知（${unreadCount} 条未读）` : "通知"}
                   >
@@ -249,7 +249,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                   {user ? (
                     <>
                       <a
-                        href="/account/dashboard"
+                        href="/account.html#/account/dashboard"
                         onClick={() => setMobileOpen(false)}
                         className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
                         style={{ color: "var(--muted-foreground)" }}
@@ -257,7 +257,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                         <LayoutDashboard size={16} /> 控制台
                       </a>
                       <a
-                        href="/account/notifications"
+                        href="/account.html#/account/notifications"
                         onClick={() => setMobileOpen(false)}
                         className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
                         style={{ color: "var(--muted-foreground)" }}
@@ -273,7 +273,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                         )}
                       </a>
                       <a
-                        href="/account/settings"
+                        href="/account.html#/account/settings"
                         onClick={() => setMobileOpen(false)}
                         className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
                         style={{ color: "var(--muted-foreground)" }}
@@ -281,7 +281,7 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                         <Settings size={16} /> 设置
                       </a>
                       <a
-                        href={`/account/profile/${user.username}`}
+                        href={`/account.html#/account/profile/${user.username}`}
                         onClick={() => setMobileOpen(false)}
                         className="nav-link rounded px-3 py-2 text-sm flex items-center gap-2"
                         style={{ color: "var(--muted-foreground)" }}
@@ -300,14 +300,14 @@ export function Navbar({ forceActive }: NavbarProps = {}) {
                   ) : (
                     <div className="flex flex-col gap-2 pt-2">
                       <a
-                        href="/account/sign-in"
+                        href="/account.html#/account/sign-in"
                         onClick={() => setMobileOpen(false)}
                         className="btn-blue btn-sm w-full"
                       >
                         登录
                       </a>
                       <a
-                        href="/account/sign-up"
+                        href="/account.html#/account/sign-up"
                         onClick={() => setMobileOpen(false)}
                         className="btn-outline btn-sm w-full"
                       >

@@ -75,7 +75,7 @@ export default function ResetPasswordPage() {
           <Info size={16} style={{ flexShrink: 0, marginTop: 1, color: 'var(--accent-blue)' }} />
           <span>请联系管理员通过后台或邮件协助你重置密码。</span>
         </div>
-        <a href="/account/sign-in" className="btn-blue btn-block btn-lg" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <a href="/account.html#/account/sign-in" className="btn-blue btn-block btn-lg" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <ArrowLeft size={18} />
           返回登录
         </a>

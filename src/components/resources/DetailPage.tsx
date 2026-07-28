@@ -622,8 +622,8 @@ export default function DetailPage() {
                 onSubmit={handleSubmitComment}
                 submitting={submitting}
                 onLogin={() => {
-                  const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-                  navigate(`/account/sign-in?redirect=${redirect}`);
+                  const redirect = encodeURIComponent(window.location.hash || '#/resources');
+                  window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
                 }}
               />
             </div>

@@ -97,7 +97,7 @@ export function UserMenu() {
           }}
         >
           <a
-            href="/account/dashboard"
+            href="/account.html#/account/dashboard"
             onClick={() => setOpen(false)}
             className={menuItemClass}
             style={{ color: 'var(--foreground)' }}
@@ -106,7 +106,7 @@ export function UserMenu() {
             <LayoutDashboard size={16} /> 控制台
           </a>
           <a
-            href="/account/notifications"
+            href="/account.html#/account/notifications"
             onClick={() => setOpen(false)}
             className={menuItemClass}
             style={{ color: 'var(--foreground)' }}
@@ -115,7 +115,7 @@ export function UserMenu() {
             <Bell size={16} /> 通知
           </a>
           <a
-            href="/account/settings"
+            href="/account.html#/account/settings"
             onClick={() => setOpen(false)}
             className={menuItemClass}
             style={{ color: 'var(--foreground)' }}
@@ -124,7 +124,7 @@ export function UserMenu() {
             <Settings size={16} /> 设置
           </a>
           <a
-            href={`/account/profile/${user.username}`}
+            href={`/account.html#/account/profile/${user.username}`}
             onClick={() => setOpen(false)}
             className={menuItemClass}
             style={{ color: 'var(--foreground)' }}

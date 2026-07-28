@@ -55,7 +55,7 @@ export default function VerifyEmailPage() {
         >
           邮件服务暂未开通，您的账户已自动验证
         </p>
-        <a href="/account/dashboard" className="btn-blue btn-block btn-lg" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+        <a href="/account.html#/account/dashboard" className="btn-blue btn-block btn-lg" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <ArrowLeft size={18} />
           返回控制台
         </a>

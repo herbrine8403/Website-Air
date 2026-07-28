@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/hooks/useAuth';
 import { AuthGuard } from '@/components/shared/AuthGuard';
 import { Navbar } from '@/components/Navbar';
@@ -16,7 +16,7 @@ import AdminPage from './AdminPage';
 export default function AccountApp() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <div className="min-h-screen bg-background text-foreground flex flex-col">
           <Navbar forceActive="account" />
           <div className="navbar-spacer" aria-hidden="true" />
@@ -37,7 +37,7 @@ export default function AccountApp() {
           </main>
           <Footer />
         </div>
-      </BrowserRouter>
+      </HashRouter>
     </AuthProvider>
   );
 }

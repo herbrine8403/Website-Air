@@ -17,9 +17,9 @@ export function LoginPrompt({ trigger, message = '此操作需要登录' }: Logi
   };
 
   const redirectToLogin = () => {
-    const current = window.location.pathname + window.location.search;
+    const current = window.location.hash || '#/';
     const redirect = encodeURIComponent(current);
-    navigate(`/account/sign-in?redirect=${redirect}`);
+    window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
   };
 
   return (

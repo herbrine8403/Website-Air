@@ -1,30 +1,7 @@
-# Air 官网 SPA fallback 配置
+# Air 官网配置
 # InfinityFree Apache 服务器
-# 将 /resources/*、/forum/*、/account/*、/callback/* 等前端路由回退到对应 HTML 入口
-
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-
-  # 资源板块 SPA fallback
-  RewriteCond %{REQUEST_URI} ^/resources [NC]
-  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
-  RewriteRule ^ /resources.html [L]
-
-  # 论坛板块 SPA fallback
-  RewriteCond %{REQUEST_URI} ^/forum [NC]
-  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
-  RewriteRule ^ /forum.html [L]
-
-  # 账户板块 SPA fallback
-  RewriteCond %{REQUEST_URI} ^/account [NC]
-  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
-  RewriteRule ^ /account.html [L]
-
-  # OAuth 回调
-  RewriteCond %{REQUEST_URI} ^/callback [NC]
-  RewriteCond %{REQUEST_URI} !\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map)$ [NC]
-  RewriteRule ^ /callback.html [L]
-</IfModule>
+# 注意：完全移除 mod_rewrite SPA fallback 规则，避免无限循环导致 500 错误
+# 用户需直接访问 /resources.html、/forum.html、/account.html 等完整 URL
 
 # 安全头
 <IfModule mod_headers.c>

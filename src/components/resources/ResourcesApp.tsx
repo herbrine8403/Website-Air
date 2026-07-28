@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/hooks/useAuth';
 import { AuthGuard } from '@/components/shared/AuthGuard';
 import { Navbar } from '@/components/Navbar';
@@ -14,7 +14,7 @@ import SettingsPage from './SettingsPage';
 export default function ResourcesApp() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <HashRouter>
         <div className="min-h-screen bg-background text-foreground flex flex-col">
           <Navbar forceActive="resources" />
           <div className="navbar-spacer" aria-hidden="true" />
@@ -32,7 +32,7 @@ export default function ResourcesApp() {
           </main>
           <Footer />
         </div>
-      </BrowserRouter>
+      </HashRouter>
     </AuthProvider>
   );
 }

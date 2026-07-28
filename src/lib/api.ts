@@ -81,18 +81,20 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
       if (retryRes.status === 401) {
         clearTokens();
         // 跳转登录页（避免循环）
-        if (!window.location.pathname.startsWith('/account/sign-in')) {
-          const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-          window.location.href = `/account/sign-in?redirect=${redirect}`;
+        const hash = window.location.hash || '';
+        if (!hash.startsWith('#/account/sign-in')) {
+          const redirect = encodeURIComponent(hash + window.location.search);
+          window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
         }
         throw new ApiError('未登录或登录已过期', 401, 'unauthorized');
       }
       return await retryRes.json() as T;
     } else {
       clearTokens();
-      if (!window.location.pathname.startsWith('/account/sign-in')) {
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-        window.location.href = `/account/sign-in?redirect=${redirect}`;
+      const hash = window.location.hash || '';
+      if (!hash.startsWith('#/account/sign-in')) {
+        const redirect = encodeURIComponent(hash + window.location.search);
+        window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
       }
       throw new ApiError('未登录或登录已过期', 401, 'unauthorized');
     }
