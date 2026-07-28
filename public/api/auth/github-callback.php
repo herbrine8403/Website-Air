@@ -219,12 +219,24 @@ $stmt->bind_param('i', $user_id);
 $stmt->execute();
 $stmt->close();
 
-// 签发 JWT access token
+// 签发 JWT access token + refresh token
 $now = time();
 $access_payload = ['sub' => (string)$user_id, 'iat' => $now, 'exp' => $now + JWT_ACCESS_TTL, 'type' => 'access'];
+$refresh_payload = ['sub' => (string)$user_id, 'iat' => $now, 'exp' => $now + JWT_REFRESH_TTL, 'type' => 'refresh'];
 $access_token = jwt_encode($access_payload);
+$refresh_token = jwt_encode($refresh_payload);
 
-// 重定向到 /callback.html?token=xxx
+// 创建 session（与 signin.php / signup.php 一致，否则 refresh.php 无法校验）
+$refresh_hash = hash('sha256', $refresh_token);
+$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+$expires_at = date('Y-m-d H:i:s', $now + JWT_REFRESH_TTL);
+$stmt = $db->prepare('INSERT INTO user_sessions (user_id, refresh_token_hash, ip, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)');
+$stmt->bind_param('issss', $user_id, $refresh_hash, $ip, $ua, $expires_at);
+$stmt->execute();
+$stmt->close();
+
+// 重定向到 /callback.html?token=xxx&refresh_token=yyy
 header_remove('Content-Type');
-header('Location: /callback.html?token=' . urlencode($access_token), true, 302);
+header('Location: /callback.html?token=' . urlencode($access_token) . '&refresh_token=' . urlencode($refresh_token), true, 302);
 exit;

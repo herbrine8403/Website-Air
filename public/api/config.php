@@ -190,33 +190,39 @@ function jwt_decode($token) {
  * 返回 token 字符串或 null
  */
 function extract_bearer_token() {
+    $token = null;
+
+    // 1. 从 Authorization 头提取（标准方式）
     $authHeader = null;
-    // 1. 标准模式下 $_SERVER['HTTP_AUTHORIZATION'] 应存在
     if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
     } elseif (getenv('HTTP_AUTHORIZATION')) {
-        // 2. 某些 CGI 模式下需要 getenv
         $authHeader = getenv('HTTP_AUTHORIZATION');
     } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        // 3. Apache rewrite 模式下透传的变量
         $authHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
     } elseif (function_exists('getallheaders')) {
-        // 4. Apache + mod_php 模式下使用 getallheaders()
         $allHeaders = getallheaders();
         if (isset($allHeaders['Authorization'])) {
             $authHeader = $allHeaders['Authorization'];
         } elseif (isset($allHeaders['authorization'])) {
-            // HTTP 头大小写不敏感，某些环境下可能是小写
             $authHeader = $allHeaders['authorization'];
         }
     }
-    if (!$authHeader) {
-        return null;
+    if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $matches)) {
+        $token = trim($matches[1]);
     }
-    if (preg_match('/Bearer\s+(.+)/i', $authHeader, $matches)) {
-        return trim($matches[1]);
+
+    // 2. 从 Cookie 提取（前端 setTokens 同时存了 cookie）
+    if (!$token && isset($_COOKIE['air_access_token'])) {
+        $token = $_COOKIE['air_access_token'];
     }
-    return null;
+
+    // 3. 从 URL 参数提取（兼容某些场景）
+    if (!$token) {
+        $token = $_GET['access_token'] ?? $_POST['access_token'] ?? null;
+    }
+
+    return $token;
 }
 
 /**
