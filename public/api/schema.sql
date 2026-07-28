@@ -419,9 +419,38 @@ CREATE TABLE IF NOT EXISTS inbox_messages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ===== 管理员控制台迁移（已有部署升级用） =====
--- users 表新增 is_admin 字段
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE AFTER role;
-ALTER TABLE users ADD INDEX IF NOT EXISTS idx_is_admin (is_admin);
+-- 说明：MySQL 8.0.29 以下版本和 phpMyAdmin sql-parser 不支持
+--       ALTER TABLE ... ADD COLUMN IF NOT EXISTS 语法，
+--       因此使用存储过程进行幂等迁移，可重复执行。
+
+DELIMITER //
+DROP PROCEDURE IF EXISTS migrate_add_is_admin//
+CREATE PROCEDURE migrate_add_is_admin()
+BEGIN
+    -- 1. 检查并添加 is_admin 列
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'users'
+          AND COLUMN_NAME = 'is_admin'
+    ) THEN
+        ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE AFTER role;
+    END IF;
+
+    -- 2. 检查并添加 idx_is_admin 索引
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'users'
+          AND INDEX_NAME = 'idx_is_admin'
+    ) THEN
+        ALTER TABLE users ADD INDEX idx_is_admin (is_admin);
+    END IF;
+END//
+DELIMITER ;
+
+CALL migrate_add_is_admin();
+DROP PROCEDURE IF EXISTS migrate_add_is_admin;
 
 -- 给邮箱为 weishixvn@outlook.com 的用户预置管理员
 UPDATE users SET is_admin = 1 WHERE email = 'weishixvn@outlook.com';
