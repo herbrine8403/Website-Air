@@ -1,23 +1,22 @@
 <?php
-// MySQL 数据库连接配置
-// InfinityFree 数据库凭据从环境变量读取，回退到硬编码（部署后修改）
-define('DB_HOST', getenv('DB_HOST') ?: 'sql301.infinityfree.com');
-define('DB_NAME', getenv('DB_NAME') ?: 'REMOVED_DB_NAME');
-define('DB_USER', getenv('DB_USER') ?: 'REMOVED_DB_USER');
-define('DB_PASS', getenv('DB_PASS') ?: 'REMOVED_DB_PASS');
+// MySQL 数据库连接配置（InfinityFree 免费版不支持环境变量，直接内置）
+define('DB_HOST', 'sql301.infinityfree.com');
+define('DB_NAME', 'REMOVED_DB_NAME');
+define('DB_USER', 'REMOVED_DB_USER');
+define('DB_PASS', 'REMOVED_DB_PASS');
 
 // 公告系统基础 URL（用于设备型号映射等）
 define('BASE_URL', 'https://newamethyst.ct.ws');
 
-// JWT 配置
-define('JWT_SECRET', getenv('JWT_SECRET') ?: 'air_default_jwt_secret_change_in_production_please_32chars');
+// JWT 配置（InfinityFree 免费版不支持环境变量，直接内置）
+define('JWT_SECRET', 'REMOVED_JWT_SECRET');
 define('JWT_ACCESS_TTL', 7200);   // 2 小时
 define('JWT_REFRESH_TTL', 2592000); // 30 天
 define('JWT_ALG', 'HS256');
 
-// GitHub OAuth
+// GitHub OAuth（InfinityFree 免费版不支持环境变量，直接内置）
 define('GITHUB_CLIENT_ID', 'Ov23ctExKxAIGEjm97mv');
-define('GITHUB_CLIENT_SECRET', getenv('GITHUB_CLIENT_SECRET') ?: '');
+define('GITHUB_CLIENT_SECRET', 'REMOVED_GITHUB_CLIENT_SECRET');
 define('GITHUB_REDIRECT_URI', 'https://newamethyst.ct.ws/api/auth/github-callback.php');
 
 // CORS 配置：基于白名单的 Origin 校验
