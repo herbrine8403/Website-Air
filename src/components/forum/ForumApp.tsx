@@ -21,6 +21,8 @@ export default function ForumApp() {
           <div className="navbar-spacer" aria-hidden="true" />
           <main className="flex-1">
             <Routes>
+              {/* 根路径重定向到 /forum（避免访问 /forum.html 时 hash 为空导致空白） */}
+              <Route path="/" element={<Navigate to="/forum" replace />} />
               <Route path="/forum" element={<IndexPage />} />
               <Route path="/forum/topics" element={<TopicsPage />} />
               <Route path="/forum/topic" element={<TopicDetailPage />} />
@@ -29,7 +31,7 @@ export default function ForumApp() {
               <Route path="/forum/questions" element={<QuestionsPage />} />
               <Route path="/forum/question" element={<QuestionDetailPage />} />
               <Route path="/forum/new-post" element={<AuthGuard><NewPostPage /></AuthGuard>} />
-              <Route path="/forum/*" element={<Navigate to="/forum" replace />} />
+              <Route path="*" element={<Navigate to="/forum" replace />} />
             </Routes>
           </main>
           <Footer />

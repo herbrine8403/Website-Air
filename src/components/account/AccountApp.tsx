@@ -22,6 +22,8 @@ export default function AccountApp() {
           <div className="navbar-spacer" aria-hidden="true" />
           <main className="flex-1">
             <Routes>
+              {/* 根路径重定向到 /account/sign-in（避免访问 /account.html 时 hash 为空导致空白） */}
+              <Route path="/" element={<Navigate to="/account/sign-in" replace />} />
               <Route path="/account/sign-in" element={<SignInPage />} />
               <Route path="/account/sign-up" element={<SignUpPage />} />
               <Route path="/account/verify-email" element={<VerifyEmailPage />} />

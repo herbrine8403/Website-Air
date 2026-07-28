@@ -20,6 +20,8 @@ export default function ResourcesApp() {
           <div className="navbar-spacer" aria-hidden="true" />
           <main className="flex-1">
             <Routes>
+              {/* 根路径重定向到 /resources（避免访问 /resources.html 时 hash 为空导致空白） */}
+              <Route path="/" element={<Navigate to="/resources" replace />} />
               <Route path="/resources" element={<IndexPage />} />
               <Route path="/resources/list" element={<ListPage />} />
               <Route path="/resources/detail" element={<DetailPage />} />
@@ -27,7 +29,7 @@ export default function ResourcesApp() {
               <Route path="/resources/version" element={<VersionDetailPage />} />
               <Route path="/resources/upload" element={<AuthGuard><UploadPage /></AuthGuard>} />
               <Route path="/resources/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
-              <Route path="/resources/*" element={<Navigate to="/resources" replace />} />
+              <Route path="*" element={<Navigate to="/resources" replace />} />
             </Routes>
           </main>
           <Footer />
