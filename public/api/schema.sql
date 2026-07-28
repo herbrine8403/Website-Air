@@ -420,37 +420,26 @@ CREATE TABLE IF NOT EXISTS inbox_messages (
 
 -- ===== 管理员控制台迁移（已有部署升级用） =====
 -- 说明：MySQL 8.0.29 以下版本和 phpMyAdmin sql-parser 不支持
---       ALTER TABLE ... ADD COLUMN IF NOT EXISTS 语法，
---       因此使用存储过程进行幂等迁移，可重复执行。
+--       ALTER TABLE ... ADD COLUMN IF NOT EXISTS 语法。
+-- 执行方式：
+--   1. 先执行下方"检查语句"确认列/索引是否存在
+--   2. 若返回空，执行对应的"添加语句"
+--   3. 最后执行 UPDATE 预置管理员
+-- 所有语句均为单条 ALTER，phpMyAdmin 完全兼容。
 
-DELIMITER //
-DROP PROCEDURE IF EXISTS migrate_add_is_admin//
-CREATE PROCEDURE migrate_add_is_admin()
-BEGIN
-    -- 1. 检查并添加 is_admin 列
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'users'
-          AND COLUMN_NAME = 'is_admin'
-    ) THEN
-        ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE AFTER role;
-    END IF;
+-- 【检查 1】is_admin 列是否存在（返回空则需要添加）
+-- SELECT COLUMN_NAME FROM information_schema.COLUMNS
+--   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'is_admin';
 
-    -- 2. 检查并添加 idx_is_admin 索引
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'users'
-          AND INDEX_NAME = 'idx_is_admin'
-    ) THEN
-        ALTER TABLE users ADD INDEX idx_is_admin (is_admin);
-    END IF;
-END//
-DELIMITER ;
+-- 【添加 1】添加 is_admin 列（仅当上方检查返回空时执行）
+ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE AFTER role;
 
-CALL migrate_add_is_admin();
-DROP PROCEDURE IF EXISTS migrate_add_is_admin;
+-- 【检查 2】idx_is_admin 索引是否存在
+-- SELECT INDEX_NAME FROM information_schema.STATISTICS
+--   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND INDEX_NAME = 'idx_is_admin';
 
--- 给邮箱为 weishixvn@outlook.com 的用户预置管理员
+-- 【添加 2】添加 idx_is_admin 索引（仅当上方检查返回空时执行）
+ALTER TABLE users ADD INDEX idx_is_admin (is_admin);
+
+-- 【预置管理员】给邮箱为 weishixvn@outlook.com 的用户授予管理员权限
 UPDATE users SET is_admin = 1 WHERE email = 'weishixvn@outlook.com';
