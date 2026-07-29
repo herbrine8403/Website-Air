@@ -42,7 +42,10 @@ interface UploadedFile {
   name: string;
   size: string;
   progress: number;
-  status: 'uploading' | 'done';
+  status: 'uploading' | 'done' | 'error';
+  key?: string; // TOS 对象 key（Air 官网下载源上传后返回）
+  rawSize?: number; // 原始字节数
+  errorMsg?: string; // 上传失败时的错误信息
 }
 
 interface SourceState {
@@ -101,6 +104,7 @@ export default function UploadPage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [coverDragOver, setCoverDragOver] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -139,78 +143,234 @@ export default function UploadPage() {
     }));
   }, []);
 
+  // 上传文件到 TOS（Air 官网下载源）
+  const uploadToTos = useCallback(async (file: File) => {
+    const newFile: UploadedFile = {
+      name: file.name,
+      size: formatBytes(file.size),
+      rawSize: file.size,
+      progress: 0,
+      status: 'uploading',
+    };
+    setFiles((prev) => [...prev, newFile]);
+
+    try {
+      // 1. 获取预签名上传 URL
+      const presignRes = await api.post<{
+        success: boolean;
+        upload_url: string;
+        key: string;
+        headers?: Record<string, string>;
+      }>('/resources/air-upload.php', {
+        filename: file.name,
+        content_type: file.type || 'application/octet-stream',
+      });
+
+      if (!presignRes.success || !presignRes.upload_url) {
+        throw new Error('获取上传地址失败');
+      }
+
+      // 2. 使用 XMLHttpRequest 上传（支持进度回调）
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', presignRes.upload_url);
+        // 设置 Content-Type 头
+        const contentType = file.type || 'application/octet-stream';
+        xhr.setRequestHeader('Content-Type', contentType);
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
+            setFiles((prev) =>
+              prev.map((f) =>
+                f.name === newFile.name ? { ...f, progress } : f
+              )
+            );
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            // 捕获 TOS 返回的错误响应体
+            const body = xhr.responseText || '';
+            console.error('[TOS Upload Error]', {
+              status: xhr.status,
+              statusText: xhr.statusText,
+              response: body,
+              key: presignRes.key,
+              uploadUrl: presignRes.upload_url,
+            });
+            let detail = '';
+            try {
+              const j = JSON.parse(body);
+              detail = j.Message || j.message || j.error || '';
+              if (j.Code) detail = `${j.Code}: ${detail}`;
+            } catch {
+              detail = body.slice(0, 200);
+            }
+            reject(new Error(`上传失败 HTTP ${xhr.status} ${detail}`));
+          }
+        };
+
+        xhr.onerror = () => {
+          // CORS 错误时浏览器不会给详细响应，只能提示
+          console.error('[TOS Upload Network Error]', {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            key: presignRes.key,
+          });
+          reject(new Error('网络/CORS 错误，上传失败（请检查 TOS 控制台 CORS 配置）'));
+        };
+        xhr.send(file);
+      });
+
+      // 3. 标记上传完成，记录 key
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === newFile.name
+            ? { ...f, progress: 100, status: 'done', key: presignRes.key }
+            : f
+        )
+      );
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : '上传失败';
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === newFile.name
+            ? { ...f, status: 'error', errorMsg }
+            : f
+        )
+      );
+      // 同时移除其他同名 uploading 状态的文件
+      throw err;
+    }
+  }, []);
+
   const handleFileDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDragOver(false);
       const droppedFiles = Array.from(e.dataTransfer.files);
-      droppedFiles.forEach((file) => {
-        const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
-        if (!ALLOWED_EXTENSIONS.includes(ext)) {
-          alert(`不支持的文件格式: ${file.name}（仅支持 ${ALLOWED_EXTENSIONS.join(', ')}）`);
-          return;
-        }
-        // 模拟上传（Air 官网对象存储暂未上线）
-        const newFile: UploadedFile = {
-          name: file.name,
-          size: formatBytes(file.size),
-          progress: 0,
-          status: 'uploading',
-        };
-        setFiles((prev) => [...prev, newFile]);
-        // 模拟进度
-        const interval = setInterval(() => {
-          setFiles((prev) =>
-            prev.map((f) =>
-              f.name === newFile.name
-                ? {
-                    ...f,
-                    progress: Math.min(100, f.progress + 10),
-                    status: f.progress + 10 >= 100 ? 'done' : 'uploading',
-                  }
-                : f
-            )
-          );
-        }, 200);
-        setTimeout(() => clearInterval(interval), 2500);
-      });
-    },
-    []
-  );
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    selectedFiles.forEach((file) => {
+      // 仅处理第一个文件（Air 源单文件上传）
+      const file = droppedFiles[0];
+      if (!file) return;
       const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
       if (!ALLOWED_EXTENSIONS.includes(ext)) {
         alert(`不支持的文件格式: ${file.name}（仅支持 ${ALLOWED_EXTENSIONS.join(', ')}）`);
         return;
       }
-      const newFile: UploadedFile = {
-        name: file.name,
-        size: formatBytes(file.size),
-        progress: 0,
-        status: 'uploading',
-      };
-      setFiles((prev) => [...prev, newFile]);
-      const interval = setInterval(() => {
-        setFiles((prev) =>
-          prev.map((f) =>
-            f.name === newFile.name
-              ? {
-                  ...f,
-                  progress: Math.min(100, f.progress + 10),
-                  status: f.progress + 10 >= 100 ? 'done' : 'uploading',
-                }
-              : f
-          )
-        );
-      }, 200);
-      setTimeout(() => clearInterval(interval), 2500);
-    });
-    // 清空 input 允许重新选择
-    e.target.value = '';
-  }, []);
+      // 真实上传到 TOS
+      uploadToTos(file).catch(() => {
+        // 错误已在 uploadToTos 中处理
+      });
+    },
+    [uploadToTos]
+  );
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = Array.from(e.target.files || []);
+      const file = selectedFiles[0];
+      if (!file) return;
+      const ext = '.' + (file.name.split('.').pop() || '').toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        alert(`不支持的文件格式: ${file.name}（仅支持 ${ALLOWED_EXTENSIONS.join(', ')}）`);
+        return;
+      }
+      uploadToTos(file).catch(() => {
+        // 错误已在 uploadToTos 中处理
+      });
+      // 清空 input 允许重新选择
+      e.target.value = '';
+    },
+    [uploadToTos]
+  );
+
+  // 上传封面图片到 TOS
+  const handleCoverSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedFiles = Array.from(e.target.files || []);
+      const file = selectedFiles[0];
+      if (!file) return;
+      // 校验图片类型
+      if (!file.type.startsWith('image/')) {
+        alert('请选择图片文件（PNG / JPG）');
+        e.target.value = '';
+        return;
+      }
+      // 校验大小（5MB）
+      if (file.size > 5 * 1024 * 1024) {
+        alert('封面图片不能超过 5MB');
+        e.target.value = '';
+        return;
+      }
+      setCoverUploading(true);
+      try {
+        // 1. 获取预签名上传 URL（upload_type=cover）
+        const presignRes = await api.post<{
+          success: boolean;
+          upload_url: string;
+          key: string;
+          public_url?: string;
+        }>('/resources/air-upload.php', {
+          filename: file.name,
+          content_type: file.type || 'image/png',
+          upload_type: 'cover',
+        });
+        if (!presignRes.success || !presignRes.upload_url) {
+          throw new Error('获取封面上传地址失败');
+        }
+        // 2. PUT 上传到 TOS
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', presignRes.upload_url);
+          xhr.setRequestHeader('Content-Type', file.type || 'image/png');
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              const body = xhr.responseText || '';
+              console.error('[TOS Cover Upload Error]', {
+                status: xhr.status,
+                response: body,
+                key: presignRes.key,
+              });
+              let detail = '';
+              try {
+                const j = JSON.parse(body);
+                detail = j.Code ? `${j.Code}: ${j.Message || ''}` : (j.Message || body.slice(0, 200));
+              } catch {
+                detail = body.slice(0, 200);
+              }
+              reject(new Error(`封面上传失败 HTTP ${xhr.status} ${detail}`));
+            }
+          };
+          xhr.onerror = () => {
+            console.error('[TOS Cover Network Error]', { status: xhr.status, key: presignRes.key });
+            reject(new Error('网络/CORS 错误，封面上传失败（请检查 TOS CORS 配置）'));
+          };
+          xhr.send(file);
+        });
+        // 3. 将公共 URL 填入 coverUrl
+        const publicUrl = presignRes.public_url || '';
+        if (publicUrl) {
+          updateForm('coverUrl', publicUrl);
+        } else {
+          throw new Error('未返回封面 URL');
+        }
+      } catch (err) {
+        if (err instanceof ApiError) alert(err.message);
+        else if (err instanceof Error) alert(err.message);
+        else alert('封面上传失败');
+      } finally {
+        setCoverUploading(false);
+        e.target.value = '';
+      }
+    },
+    [updateForm]
+  );
 
   const removeFile = useCallback((name: string) => {
     setFiles((prev) => prev.filter((f) => f.name !== name));
@@ -218,7 +378,9 @@ export default function UploadPage() {
 
   // 步骤校验
   const canProceedStep1 = form.name.trim().length >= 3 && form.summary.trim() && form.description.trim() && form.type;
-  const canProceedStep2 = true; // 文件上传非必须（因为对象存储未上线）
+  // 步骤 2：如果 Air 源启用，必须至少有一个上传成功的文件
+  const airFileUploaded = files.some((f) => f.status === 'done' && f.key);
+  const canProceedStep2 = !form.sources.air.enabled || airFileUploaded;
   const canSubmit =
     form.versionNumber.trim() &&
     form.loaders.length > 0 &&
@@ -231,7 +393,9 @@ export default function UploadPage() {
     // 启用的外部源必须有 URL
     (!form.sources.modrinth.enabled || form.sources.modrinth.url.trim()) &&
     (!form.sources.curseforge.enabled || form.sources.curseforge.url.trim()) &&
-    (!form.sources.github.enabled || form.sources.github.url.trim());
+    (!form.sources.github.enabled || form.sources.github.url.trim()) &&
+    // Air 源必须已上传文件
+    (!form.sources.air.enabled || airFileUploaded);
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
@@ -260,18 +424,34 @@ export default function UploadPage() {
         }
 
         // 2. 创建版本
-        const versionSources: Array<{ source: string; url?: string }> = [];
+        // 构造 files 数组（后端 version-create.php 期望的格式）
+        const versionFiles: Array<{
+          source_type: string;
+          source_url?: string;
+          file_path?: string;
+          file_name?: string;
+          file_size?: number;
+        }> = [];
         if (form.sources.modrinth.enabled && form.sources.modrinth.url) {
-          versionSources.push({ source: 'modrinth', url: form.sources.modrinth.url });
+          versionFiles.push({ source_type: 'modrinth', source_url: form.sources.modrinth.url });
         }
         if (form.sources.curseforge.enabled && form.sources.curseforge.url) {
-          versionSources.push({ source: 'curseforge', url: form.sources.curseforge.url });
+          versionFiles.push({ source_type: 'curseforge', source_url: form.sources.curseforge.url });
         }
         if (form.sources.github.enabled && form.sources.github.url) {
-          versionSources.push({ source: 'github', url: form.sources.github.url });
+          versionFiles.push({ source_type: 'github', source_url: form.sources.github.url });
         }
         if (form.sources.air.enabled) {
-          versionSources.push({ source: 'air' });
+          // 查找第一个上传成功的文件
+          const airFile = files.find((f) => f.status === 'done' && f.key);
+          if (airFile) {
+            versionFiles.push({
+              source_type: 'air',
+              file_path: airFile.key,
+              file_name: airFile.name,
+              file_size: airFile.rawSize,
+            });
+          }
         }
 
         const versionPayload = {
@@ -282,7 +462,7 @@ export default function UploadPage() {
           loaders: form.loaders,
           game_versions: form.gameVersions,
           changelog: form.changelog,
-          sources: versionSources,
+          files: versionFiles,
         };
         await api.post<{ success: boolean }>('/resources/version-create.php', versionPayload);
 
@@ -297,7 +477,7 @@ export default function UploadPage() {
         setSubmitting(false);
       }
     },
-    [form, canSubmit, navigate]
+    [form, canSubmit, navigate, files]
   );
 
   return (
@@ -344,7 +524,7 @@ export default function UploadPage() {
         </p>
       </section>
 
-      <div className="grid gap-7" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'flex-start' }}>
+      <div className="upload-grid">
         {/* 左侧表单 */}
         <div className="flex flex-col gap-7">
           {/* 步骤指示器 */}
@@ -420,7 +600,7 @@ export default function UploadPage() {
           >
             <div className="form-group">
               <label className="form-label">
-                资源名称<span style={{ color: 'var(--destructive)' }}>*</span>
+                资源名称<span className="req">*</span>
               </label>
               <input
                 type="text"
@@ -434,7 +614,7 @@ export default function UploadPage() {
 
             <div className="form-group">
               <label className="form-label">
-                简短描述<span style={{ color: 'var(--destructive)' }}>*</span>
+                简短描述<span className="req">*</span>
               </label>
               <input
                 type="text"
@@ -448,7 +628,7 @@ export default function UploadPage() {
 
             <div className="form-group">
               <label className="form-label">
-                详细描述<span style={{ color: 'var(--destructive)' }}>*</span>
+                详细描述<span className="req">*</span>
               </label>
               <textarea
                 value={form.description}
@@ -462,15 +642,12 @@ export default function UploadPage() {
 
             <div className="form-group">
               <label className="form-label">
-                资源分类<span style={{ color: 'var(--destructive)' }}>*</span>
+                资源分类<span className="req">*</span>
               </label>
               <span className="form-hint" style={{ marginBottom: 8 }}>
                 选择资源所属分类
               </span>
-              <div
-                className="grid gap-2"
-                style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}
-              >
+              <div className="cat-grid">
                 {RESOURCE_TYPES.map((t) => {
                   const Icon = t.icon;
                   const selected = form.type === t.key;
@@ -544,7 +721,7 @@ export default function UploadPage() {
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label className="form-label">封面图片</label>
               <span className="form-hint" style={{ marginBottom: 8 }}>
-                输入图片 URL（建议尺寸 1280×720，支持 PNG/JPG）
+                点击下方区域上传图片，或直接输入图片 URL（建议尺寸 1280×720，支持 PNG/JPG）
               </span>
               <input
                 type="url"
@@ -563,20 +740,57 @@ export default function UploadPage() {
                 onDrop={(e) => {
                   e.preventDefault();
                   setCoverDragOver(false);
-                  // 仅做提示，因为对象存储未上线
-                  alert('Air 官网对象存储即将上线，目前请使用外部 URL');
+                  const droppedFiles = Array.from(e.dataTransfer.files);
+                  const file = droppedFiles[0];
+                  if (!file) return;
+                  if (!file.type.startsWith('image/')) {
+                    alert('请选择图片文件（PNG / JPG）');
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    alert('封面图片不能超过 5MB');
+                    return;
+                  }
+                  // 复用 handleCoverSelect 的上传逻辑
+                  const dt = new DataTransfer();
+                  dt.items.add(file);
+                  const evt = { target: { files: dt.files, value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>;
+                  handleCoverSelect(evt);
                 }}
-                className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg"
+                onClick={() => document.getElementById('cover-input')?.click()}
+                className="flex flex-col items-center justify-center gap-2 py-6 rounded-lg cursor-pointer"
                 style={{
                   border: `2px dashed ${coverDragOver ? 'var(--accent-blue)' : 'var(--border-strong)'}`,
                   background: 'var(--background)',
                   color: 'var(--muted-foreground)',
                   textAlign: 'center',
+                  position: 'relative',
                 }}
               >
-                <ImageIcon size={22} />
-                <span className="text-sm">点击或拖拽上传封面图片</span>
-                <span className="text-xs">PNG / JPG · 最大 5MB · 推荐 16:9</span>
+                {coverUploading ? (
+                  <>
+                    <Loader2 size={22} className="animate-spin" style={{ color: 'var(--accent-blue)' }} />
+                    <span className="text-sm" style={{ color: 'var(--foreground)' }}>上传中...</span>
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon size={22} />
+                    <span className="text-sm">点击或拖拽上传封面图片</span>
+                    <span className="text-xs">PNG / JPG · 最大 5MB · 推荐 16:9</span>
+                    {form.coverUrl && (
+                      <span className="text-xs mt-1" style={{ color: 'var(--color-success)' }}>
+                        ✓ 已上传
+                      </span>
+                    )}
+                  </>
+                )}
+                <input
+                  id="cover-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  onChange={handleCoverSelect}
+                  style={{ display: 'none' }}
+                />
               </div>
             </div>
 
@@ -640,14 +854,17 @@ export default function UploadPage() {
             <div
               className="flex items-start gap-2 mt-4 p-3 rounded-lg text-sm"
               style={{
-                background: 'var(--accent-blue-soft)',
-                color: 'var(--accent-blue)',
+                background: form.sources.air.enabled
+                  ? 'rgba(34, 197, 94, 0.08)'
+                  : 'var(--accent-blue-soft)',
+                color: form.sources.air.enabled ? 'var(--color-success)' : 'var(--accent-blue)',
               }}
             >
               <Info size={16} className="flex-shrink-0 mt-0.5" />
               <span>
-                Air 官网对象存储即将上线，目前请使用外部下载源（Modrinth / CurseForge / GitHub）。
-                此处的文件上传仅作演示，不会真实存储。
+                {form.sources.air.enabled
+                  ? 'Air 官网下载源已启用：请在此处上传资源文件，文件将直接上传到 Air 官方对象存储。当前为限免测试阶段，上传和下载均不消耗积分，后续可能会引入积分消耗机制。'
+                  : '如需使用 Air 官网下载源（直传到 Air 官方对象存储），请先到步骤 3 勾选「Air 官网」下载源，然后返回此处上传文件。'}
               </span>
             </div>
 
@@ -687,11 +904,25 @@ export default function UploadPage() {
                         <span
                           className="inline-flex items-center gap-1"
                           style={{
-                            color: f.status === 'done' ? 'var(--color-success)' : 'var(--accent-blue)',
+                            color: f.status === 'done'
+                              ? 'var(--color-success)'
+                              : f.status === 'error'
+                              ? 'var(--destructive)'
+                              : 'var(--accent-blue)',
                           }}
                         >
-                          {f.status === 'done' ? <Check size={12} /> : <Clock size={12} className="animate-spin" />}
-                          {f.status === 'done' ? '上传完成' : `上传中 ${f.progress}%`}
+                          {f.status === 'done' ? (
+                            <Check size={12} />
+                          ) : f.status === 'error' ? (
+                            <X size={12} />
+                          ) : (
+                            <Clock size={12} className="animate-spin" />
+                          )}
+                          {f.status === 'done'
+                            ? '上传完成'
+                            : f.status === 'error'
+                            ? f.errorMsg || '上传失败'
+                            : `上传中 ${f.progress}%`}
                         </span>
                       </div>
                       <div
@@ -700,9 +931,13 @@ export default function UploadPage() {
                       >
                         <div
                           style={{
-                            width: `${f.progress}%`,
+                            width: `${f.status === 'error' ? 100 : f.progress}%`,
                             height: '100%',
-                            background: f.status === 'done' ? 'var(--color-success)' : 'var(--accent-blue)',
+                            background: f.status === 'done'
+                              ? 'var(--color-success)'
+                              : f.status === 'error'
+                              ? 'var(--destructive)'
+                              : 'var(--accent-blue)',
                             transition: 'width 0.2s ease',
                           }}
                         />
@@ -752,7 +987,7 @@ export default function UploadPage() {
             <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
               <div className="form-group">
                 <label className="form-label">
-                  版本号<span style={{ color: 'var(--destructive)' }}>*</span>
+                  版本号<span className="req">*</span>
                 </label>
                 <input
                   type="text"
@@ -765,7 +1000,7 @@ export default function UploadPage() {
               </div>
               <div className="form-group">
                 <label className="form-label">版本类型</label>
-                <div className="flex gap-1 mt-1">
+                <div className="seg-group">
                   {([
                     { key: 'release', label: '正式版' },
                     { key: 'beta', label: 'Beta' },
@@ -775,14 +1010,7 @@ export default function UploadPage() {
                       key={opt.key}
                       type="button"
                       onClick={() => updateForm('versionType', opt.key)}
-                      className="flex-1 py-2 text-sm rounded transition-colors"
-                      style={{
-                        background:
-                          form.versionType === opt.key ? 'var(--accent-blue)' : 'transparent',
-                        color: form.versionType === opt.key ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
-                        border: `1px solid ${form.versionType === opt.key ? 'var(--accent-blue)' : 'var(--border)'}`,
-                        cursor: 'pointer',
-                      }}
+                      className={`seg ${form.versionType === opt.key ? 'selected' : ''}`}
                     >
                       {opt.label}
                     </button>
@@ -793,7 +1021,7 @@ export default function UploadPage() {
 
             <div className="form-group">
               <label className="form-label">
-                支持加载器<span style={{ color: 'var(--destructive)' }}>*</span>
+                支持加载器<span className="req">*</span>
               </label>
               <span className="form-hint" style={{ marginBottom: 8 }}>
                 选择该版本支持的加载器（可多选）
@@ -823,7 +1051,7 @@ export default function UploadPage() {
 
             <div className="form-group">
               <label className="form-label">
-                支持 MC 版本<span style={{ color: 'var(--destructive)' }}>*</span>
+                支持 MC 版本<span className="req">*</span>
               </label>
               <span className="form-hint" style={{ marginBottom: 8 }}>
                 选择该版本兼容的 Minecraft 版本（可多选）
@@ -869,7 +1097,7 @@ export default function UploadPage() {
               <span className="form-hint" style={{ marginBottom: 8 }}>
                 选择文件提供的下载源（可多选）
               </span>
-              <div className="grid gap-2" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="source-pick">
                 <SourcePickerCard
                   label="Modrinth"
                   color="var(--color-success)"
@@ -970,7 +1198,7 @@ export default function UploadPage() {
         </div>
 
         {/* 右侧指南 */}
-        <aside className="flex flex-col gap-5" style={{ position: 'sticky', top: 84 }}>
+        <aside className="aside-sticky flex flex-col gap-5">
           {/* 上传须知 */}
           <GuideCard title="上传须知" icon={<AlertTriangle size={18} />}>
             <ul className="flex flex-col gap-2 text-sm" style={{ color: 'var(--foreground)' }}>
@@ -1136,7 +1364,7 @@ function FormSection({
           {stepBadge}
         </span>
       </div>
-      <form onSubmit={(e) => e.preventDefault()}>{children}</form>
+      <div>{children}</div>
     </section>
   );
 }
@@ -1191,13 +1419,7 @@ function SourcePickerCard({
   airStorage?: boolean;
 }) {
   return (
-    <div
-      className="rounded-lg p-3"
-      style={{
-        background: enabled ? 'var(--accent-blue-soft)' : 'var(--background)',
-        border: `1px solid ${enabled ? 'var(--accent-blue)' : 'var(--border)'}`,
-      }}
-    >
+    <div className={`sp-card ${enabled ? 'selected' : ''}`}>
       <label className="flex items-center gap-2 cursor-pointer">
         <input
           type="checkbox"
@@ -1206,12 +1428,6 @@ function SourcePickerCard({
           style={{ width: 16, height: 16, accentColor: 'var(--accent-blue)' }}
         />
         <span className={`source-label ${badgeClass}`} style={{ fontSize: 11 }}>
-          {label}
-        </span>
-        <span
-          className="text-sm font-semibold flex-1"
-          style={{ color: 'var(--foreground)' }}
-        >
           {label}
         </span>
       </label>
@@ -1229,14 +1445,17 @@ function SourcePickerCard({
       {/* TODO: 对象存储配置后启用 */}
       {enabled && airStorage && (
         <div
-          className="mt-2 text-center py-2 px-3 rounded text-xs"
+          className="mt-2 p-2.5 rounded text-xs"
           style={{
-            background: 'var(--muted)',
-            color: 'var(--muted-foreground)',
-            border: '1px dashed var(--border-strong)',
+            background: 'rgba(34, 197, 94, 0.08)',
+            color: 'var(--color-success)',
+            border: '1px solid rgba(34, 197, 94, 0.2)',
           }}
         >
-          对象存储即将上线
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>限免测试中</div>
+          <div style={{ opacity: 0.9 }}>
+            当前 Air 官网下载源处于限免测试阶段，上传/下载暂不消耗积分，后续可能引入积分机制。请到「步骤 2」上传资源文件。
+          </div>
         </div>
       )}
     </div>
