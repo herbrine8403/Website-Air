@@ -176,7 +176,11 @@ export default function QuestionDetailPage() {
       try {
         const res = await api.get<QuestionDetailResponse>(`/forum/question.php?id=${encodeURIComponent(id)}`);
         if (cancelled) return;
-        setQuestion(res.question ?? null);
+        const q = res.question ?? null;
+        if (q && (res as any).answers) {
+          (q as any).answers = (res as any).answers;
+        }
+        setQuestion(q);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError) setError(err.message);
@@ -200,7 +204,11 @@ export default function QuestionDetailPage() {
       });
       // 重新加载
       const res = await api.get<QuestionDetailResponse>(`/forum/question.php?id=${encodeURIComponent(String(question.id))}`);
-      setQuestion(res.question ?? null);
+      const q = res.question ?? null;
+      if (q && (res as any).answers) {
+        (q as any).answers = (res as any).answers;
+      }
+      setQuestion(q);
       setAnswerContent('');
     } catch (err) {
       if (err instanceof ApiError) alert(err.message);
@@ -218,7 +226,11 @@ export default function QuestionDetailPage() {
         await api.post('/forum/accept-answer.php', { answer_id: answerId });
         // 重新加载
         const res = await api.get<QuestionDetailResponse>(`/forum/question.php?id=${encodeURIComponent(String(question.id))}`);
-        setQuestion(res.question ?? null);
+        const q = res.question ?? null;
+        if (q && (res as any).answers) {
+          (q as any).answers = (res as any).answers;
+        }
+        setQuestion(q);
       } catch (err) {
         if (err instanceof ApiError) alert(err.message);
         else alert('采纳失败');

@@ -330,6 +330,8 @@ export interface AvatarProps {
 
 export function Avatar({ author, size = 36, href }: AvatarProps) {
   const initials = getInitials(author.username || '?');
+  // 已注销账号：用户名匹配 "已注销账号-{数字}" 格式
+  const isDeactivated = /^已注销账号-\d+$/.test(author.username || '');
   const style: React.CSSProperties = {
     width: size,
     height: size,
@@ -340,14 +342,22 @@ export function Avatar({ author, size = 36, href }: AvatarProps) {
     flexShrink: 0,
     fontSize: size * 0.4,
     fontWeight: 600,
-    background: 'linear-gradient(135deg, var(--brand-200), var(--brand-300))',
-    color: 'var(--accent-blue)',
+    // 已注销账号使用灰色渐变，否则使用品牌色渐变
+    background: isDeactivated
+      ? 'linear-gradient(135deg, #9ca3af, #6b7280)'
+      : 'linear-gradient(135deg, var(--brand-200), var(--brand-300))',
+    color: isDeactivated ? '#f3f4f6' : 'var(--accent-blue)',
+    // 已注销账号头像应用灰色滤镜（即使有 avatar_url 也强制灰化）
+    filter: isDeactivated ? 'grayscale(1)' : undefined,
     overflow: 'hidden',
     textDecoration: 'none',
   };
-  const inner = author.avatar_url ? (
+  // 已注销账号不显示真实头像（强制使用首字母占位）
+  const avatarSrc = author.avatar_url ?? undefined;
+  const showImage = avatarSrc && !isDeactivated;
+  const inner = showImage ? (
     <img
-      src={author.avatar_url}
+      src={avatarSrc}
       alt={author.username}
       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
     />

@@ -162,7 +162,11 @@ export default function TopicDetailPage() {
       try {
         const res = await api.get<TopicDetailResponse>(`/forum/topic.php?id=${encodeURIComponent(id)}`);
         if (cancelled) return;
-        setTopic(res.topic ?? null);
+        const t = res.topic ?? null;
+        if (t && (res as any).replies) {
+          (t as any).replies = (res as any).replies;
+        }
+        setTopic(t);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError) setError(err.message);
@@ -198,7 +202,12 @@ export default function TopicDetailPage() {
       });
       // 重新加载话题
       const res = await api.get<TopicDetailResponse>(`/forum/topic.php?id=${encodeURIComponent(String(topic.id))}`);
-      setTopic(res.topic ?? null);
+      // 后端返回的 replies 与 topic 同级，需要合并
+      const newTopic = res.topic ?? null;
+      if (newTopic && (res as any).replies) {
+        (newTopic as any).replies = (res as any).replies;
+      }
+      setTopic(newTopic);
       setReplyContent('');
       setReplyTo(null);
     } catch (err) {

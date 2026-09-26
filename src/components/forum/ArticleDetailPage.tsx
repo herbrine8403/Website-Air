@@ -154,7 +154,11 @@ export default function ArticleDetailPage() {
       try {
         const res = await api.get<ArticleDetailResponse>(`/forum/article.php?id=${encodeURIComponent(id)}`);
         if (cancelled) return;
-        setArticle(res.article ?? null);
+        const a = res.article ?? null;
+        if (a && (res as any).comments) {
+          (a as any).comments = (res as any).comments;
+        }
+        setArticle(a);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiError) setError(err.message);
@@ -187,7 +191,11 @@ export default function ArticleDetailPage() {
       });
       // 重新加载
       const res = await api.get<ArticleDetailResponse>(`/forum/article.php?id=${encodeURIComponent(String(article.id))}`);
-      setArticle(res.article ?? null);
+      const a = res.article ?? null;
+      if (a && (res as any).comments) {
+        (a as any).comments = (res as any).comments;
+      }
+      setArticle(a);
       setCommentContent('');
       setReplyTo(null);
     } catch (err) {
