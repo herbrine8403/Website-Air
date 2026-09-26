@@ -137,6 +137,9 @@ try {
     }
 
     // 创建 resource_files 记录
+    // 注意：file_size 列在 schema.sql 中为 BIGINT 允许 NULL。
+    // mysqli_stmt::bind_param 的 'i' 类型在 PHP 8.1+ 传 null 会报 TypeError。
+    // 解决方案：file_size 不存在时设为 0（数据库语义：0 表示未知大小，与 NULL 等价）
     $f_stmt = $db->prepare('INSERT INTO resource_files (version_id, source_type, source_url, file_path, file_size, file_name, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
     foreach ($files as $file) {
         if (!isset($file['source_type'])) {
@@ -144,9 +147,12 @@ try {
         }
         $f_source_type = (string)$file['source_type'];
         $f_source_url = isset($file['source_url']) ? (string)$file['source_url'] : null;
-        // 对于 source_type='air'，跳过 file_path（暂留空）
-        $f_file_path = null;
-        $f_file_size = isset($file['file_size']) ? (int)$file['file_size'] : null;
+        // Air 源使用前端传来的 file_path（TOS 对象 key）
+        // 外部源（modrinth/curseforge/github）file_path 留空，只用 source_url
+        $f_file_path = isset($file['file_path']) ? (string)$file['file_path'] : null;
+        // file_size 不存在或非数字时默认为 0（兼容 PHP 8.1+ bind_param 'i' 类型限制）
+        $f_file_size_raw = isset($file['file_size']) ? $file['file_size'] : 0;
+        $f_file_size = is_numeric($f_file_size_raw) ? (int)$f_file_size_raw : 0;
         $f_file_name = isset($file['file_name']) ? (string)$file['file_name'] : null;
         $f_stmt->bind_param('isssis', $version_id, $f_source_type, $f_source_url, $f_file_path, $f_file_size, $f_file_name);
         $f_stmt->execute();

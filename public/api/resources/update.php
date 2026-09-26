@@ -12,9 +12,17 @@ $input = get_input_json();
 
 $db = getDBConnection();
 
-$resource_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+// 兼容 query 和 body 两种传参方式
+$resource_id = 0;
+if (isset($_GET['id'])) {
+    $resource_id = intval($_GET['id']);
+} elseif (isset($input['id'])) {
+    $resource_id = intval($input['id']);
+} elseif (isset($input['resource_id'])) {
+    $resource_id = intval($input['resource_id']);
+}
 if ($resource_id <= 0) {
-    json_response(['success' => false, 'error' => '缺少 id 参数'], 400);
+    json_response(['success' => false, 'error' => '缺少 resource_id 参数（query 或 body 均可）'], 400);
 }
 
 // 查询资源并校验所有者
