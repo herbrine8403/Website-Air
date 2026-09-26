@@ -25,6 +25,7 @@ import {
   RESOURCE_TYPES,
   PageContainer,
 } from './shared';
+import { MC_VERSION_GROUPS } from './mc-versions';
 
 type StepKey = 1 | 2 | 3;
 const STEPS: Array<{ key: StepKey; label: string; desc: string }> = [
@@ -35,7 +36,7 @@ const STEPS: Array<{ key: StepKey; label: string; desc: string }> = [
 
 const IOS_TAGS = ['iOS移植', '修改版', '触屏适配', 'AirPack', 'TrollStore'];
 const LOADERS = ['Fabric', 'Forge', 'NeoForge', 'Quilt', 'LiteLoader'];
-const GAME_VERSIONS = ['1.20.1', '1.20.4', '1.20.6', '1.21', '1.21.1', '26.1', '26.2', '1.19.2', '1.18.2', '1.16.5', '1.12.2'];
+// 游戏版本列表从 ./mc-versions 导入（MC_VERSION_GROUPS）
 const ALLOWED_EXTENSIONS = ['.mrpack', '.airpack', '.jar', '.zip', '.ipa', '.tipa', '.mcpack'];
 
 interface UploadedFile {
@@ -155,28 +156,47 @@ export default function UploadPage() {
     setFiles((prev) => [...prev, newFile]);
 
     try {
-      // 1. 获取预签名上传 URL
+      // 1. 获取预签名上传 URL（传入 file_size 用于去重）
       const presignRes = await api.post<{
         success: boolean;
-        upload_url: string;
+        exists?: boolean;
+        upload_url?: string;
         key: string;
+        message?: string;
         headers?: Record<string, string>;
       }>('/resources/air-upload.php', {
         filename: file.name,
         content_type: file.type || 'application/octet-stream',
+        file_size: file.size,
       });
 
-      if (!presignRes.success || !presignRes.upload_url) {
+      if (!presignRes.success) {
         throw new Error('获取上传地址失败');
       }
 
-      // 2. 使用 XMLHttpRequest 上传（支持进度回调）
+      // 2. 如果后端检测到对象已存在，跳过 PUT 直接复用
+      if (presignRes.exists) {
+        console.log('[TOS Dedup] 文件已存在，跳过上传:', presignRes.key, presignRes.message);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.name === newFile.name
+              ? { ...f, progress: 100, status: 'done', key: presignRes.key }
+              : f
+          )
+        );
+        return;
+      }
+
+      if (!presignRes.upload_url) {
+        throw new Error('未返回上传地址');
+      }
+
+      // 3. 使用 XMLHttpRequest 上传（支持进度回调）
+      // 注意：不显式设置 Content-Type，避免触发 CORS 预检请求
+      // TOS 会使用默认值 application/octet-stream，对二进制文件无影响
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('PUT', presignRes.upload_url);
-        // 设置 Content-Type 头
-        const contentType = file.type || 'application/octet-stream';
-        xhr.setRequestHeader('Content-Type', contentType);
+        xhr.open('PUT', presignRes.upload_url!);
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -226,7 +246,7 @@ export default function UploadPage() {
         xhr.send(file);
       });
 
-      // 3. 标记上传完成，记录 key
+      // 4. 标记上传完成，记录 key
       setFiles((prev) =>
         prev.map((f) =>
           f.name === newFile.name
@@ -308,25 +328,45 @@ export default function UploadPage() {
       }
       setCoverUploading(true);
       try {
-        // 1. 获取预签名上传 URL（upload_type=cover）
+        // 1. 获取预签名上传 URL（upload_type=cover，传 file_size 用于去重）
         const presignRes = await api.post<{
           success: boolean;
-          upload_url: string;
+          exists?: boolean;
+          upload_url?: string;
           key: string;
           public_url?: string;
+          message?: string;
         }>('/resources/air-upload.php', {
           filename: file.name,
           content_type: file.type || 'image/png',
           upload_type: 'cover',
+          file_size: file.size,
         });
-        if (!presignRes.success || !presignRes.upload_url) {
+        if (!presignRes.success) {
           throw new Error('获取封面上传地址失败');
         }
-        // 2. PUT 上传到 TOS
+
+        // 2. 如果已存在，跳过 PUT 直接复用
+        if (presignRes.exists) {
+          console.log('[TOS Cover Dedup] 封面已存在，跳过上传:', presignRes.key, presignRes.message);
+          const publicUrl = presignRes.public_url || '';
+          if (publicUrl) {
+            updateForm('coverUrl', publicUrl);
+          } else {
+            throw new Error('未返回封面 URL');
+          }
+          return;
+        }
+
+        if (!presignRes.upload_url) {
+          throw new Error('未返回封面上传地址');
+        }
+
+        // 3. PUT 上传到 TOS
+        // 注意：不显式设置 Content-Type，避免触发 CORS 预检请求
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          xhr.open('PUT', presignRes.upload_url);
-          xhr.setRequestHeader('Content-Type', file.type || 'image/png');
+          xhr.open('PUT', presignRes.upload_url!);
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) {
               resolve();
@@ -353,7 +393,7 @@ export default function UploadPage() {
           };
           xhr.send(file);
         });
-        // 3. 将公共 URL 填入 coverUrl
+        // 4. 将公共 URL 填入 coverUrl
         const publicUrl = presignRes.public_url || '';
         if (publicUrl) {
           updateForm('coverUrl', publicUrl);
@@ -377,54 +417,48 @@ export default function UploadPage() {
   }, []);
 
   // 步骤校验
-  const canProceedStep1 = form.name.trim().length >= 3 && form.summary.trim() && form.description.trim() && form.type;
+  const step1BlockReasons: string[] = [];
+  if (form.name.trim().length < 3) step1BlockReasons.push('资源名称至少 3 个字符');
+  if (!form.summary.trim()) step1BlockReasons.push('请填写一句话简介');
+  if (!form.description.trim()) step1BlockReasons.push('请填写详细描述');
+  if (!form.type) step1BlockReasons.push('请选择资源类型');
+  const canProceedStep1 = step1BlockReasons.length === 0;
+
   // 步骤 2：如果 Air 源启用，必须至少有一个上传成功的文件
   const airFileUploaded = files.some((f) => f.status === 'done' && f.key);
-  const canProceedStep2 = !form.sources.air.enabled || airFileUploaded;
-  const canSubmit =
-    form.versionNumber.trim() &&
-    form.loaders.length > 0 &&
-    form.gameVersions.length > 0 &&
-    // 至少一个下载源
-    (form.sources.modrinth.enabled ||
-      form.sources.curseforge.enabled ||
-      form.sources.github.enabled ||
-      form.sources.air.enabled) &&
-    // 启用的外部源必须有 URL
-    (!form.sources.modrinth.enabled || form.sources.modrinth.url.trim()) &&
-    (!form.sources.curseforge.enabled || form.sources.curseforge.url.trim()) &&
-    (!form.sources.github.enabled || form.sources.github.url.trim()) &&
-    // Air 源必须已上传文件
-    (!form.sources.air.enabled || airFileUploaded);
+  const step2BlockReasons: string[] = [];
+  if (form.sources.air.enabled && !airFileUploaded) step2BlockReasons.push('Air 源已启用但未上传文件（或上传失败）');
+  const canProceedStep2 = step2BlockReasons.length === 0;
+
+  // 收集提交未通过的原因（用于按钮禁用时的提示）
+  const submitBlockReasons: string[] = [];
+  if (!form.versionNumber.trim()) submitBlockReasons.push('版本号未填');
+  if (form.loaders.length === 0) submitBlockReasons.push('至少选择一个加载器');
+  if (form.gameVersions.length === 0) submitBlockReasons.push('至少选择一个游戏版本');
+  const anySourceEnabled =
+    form.sources.modrinth.enabled ||
+    form.sources.curseforge.enabled ||
+    form.sources.github.enabled ||
+    form.sources.air.enabled;
+  if (!anySourceEnabled) submitBlockReasons.push('至少启用一个下载源');
+  if (form.sources.modrinth.enabled && !form.sources.modrinth.url.trim()) submitBlockReasons.push('Modrinth 链接未填');
+  if (form.sources.curseforge.enabled && !form.sources.curseforge.url.trim()) submitBlockReasons.push('CurseForge 链接未填');
+  if (form.sources.github.enabled && !form.sources.github.url.trim()) submitBlockReasons.push('GitHub 链接未填');
+  if (form.sources.air.enabled && !airFileUploaded) submitBlockReasons.push('Air 源未上传文件（或上传失败）');
+  const canSubmit = submitBlockReasons.length === 0;
 
   const handleSubmit = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (!canSubmit) return;
+      console.log('[Submit] 开始提交', { canSubmit, form, files });
+      if (!canSubmit) {
+        console.warn('[Submit] canSubmit=false, 阻止提交', submitBlockReasons);
+        return;
+      }
       setSubmitting(true);
       setSubmitError(null);
       try {
-        // 1. 创建资源
-        const createPayload = {
-          name: form.name,
-          summary: form.summary,
-          description: form.description,
-          type: form.type,
-          tags: form.tags,
-          cover_url: form.coverUrl || null,
-        };
-        const createRes = await api.post<{ success: boolean; slug?: string; id?: string | number }>(
-          '/resources/create.php',
-          createPayload
-        );
-        const resourceSlug = createRes.slug;
-        const resourceId = createRes.id;
-        if (!resourceSlug && !resourceId) {
-          throw new Error('创建资源失败：未返回标识');
-        }
-
-        // 2. 创建版本
-        // 构造 files 数组（后端 version-create.php 期望的格式）
+        // 构造 files 数组（create.php 期望 version.files[].source_type/source_url/file_path/file_name/file_size）
         const versionFiles: Array<{
           source_type: string;
           source_url?: string;
@@ -454,19 +488,42 @@ export default function UploadPage() {
           }
         }
 
-        const versionPayload = {
-          resource_id: resourceId,
-          resource_slug: resourceSlug,
-          version_number: form.versionNumber,
-          version_type: form.versionType,
-          loaders: form.loaders,
-          game_versions: form.gameVersions,
-          changelog: form.changelog,
-          files: versionFiles,
+        // 一次性调用 create.php 创建资源 + 版本（create.php 支持嵌套 version 对象）
+        // 字段名严格匹配后端 create.php 期望：
+        //   title（不是 name）、cover_image（不是 cover_url）、
+        //   version.loaders、version.mc_versions（不是 game_versions）、version.files
+        // tags.tag_type 必须为 'ios'，与 ListPage.tsx 筛选时传的 tag_type='ios' 保持一致
+        // 否则前端筛选 iOS 适配标签时会查询不到（资源列表筛选使用 tag_type='ios'）
+        const createPayload = {
+          title: form.name,
+          summary: form.summary,
+          description: form.description,
+          type: form.type,
+          tags: form.tags.map((t) => ({ type: 'ios', value: t })),
+          cover_image: form.coverUrl || null,
+          version: {
+            number: form.versionNumber,
+            type: form.versionType,
+            changelog: form.changelog || null,
+            loaders: form.loaders,
+            mc_versions: form.gameVersions,
+            files: versionFiles,
+          },
         };
-        await api.post<{ success: boolean }>('/resources/version-create.php', versionPayload);
 
-        // 3. 跳转详情页
+        const createRes = await api.post<{
+          success: boolean;
+          resource?: { id?: string; slug?: string; title?: string };
+          version?: { id?: string };
+        }>('/resources/create.php', createPayload);
+
+        const resourceSlug = createRes.resource?.slug;
+        const resourceId = createRes.resource?.id;
+        if (!resourceSlug && !resourceId) {
+          throw new Error('创建资源失败：未返回标识');
+        }
+
+        // 跳转详情页
         const targetSlug = resourceSlug || String(resourceId);
         navigate(`/resources/detail?slug=${encodeURIComponent(targetSlug)}`);
       } catch (err) {
@@ -477,7 +534,7 @@ export default function UploadPage() {
         setSubmitting(false);
       }
     },
-    [form, canSubmit, navigate, files]
+    [form, canSubmit, navigate, files, submitBlockReasons]
   );
 
   return (
@@ -798,8 +855,13 @@ export default function UploadPage() {
               <div className="flex justify-end mt-4">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
-                  disabled={!canProceedStep1}
+                  onClick={() => {
+                    if (!canProceedStep1) {
+                      alert('请先完善基本信息：\n\n• ' + step1BlockReasons.join('\n• '));
+                      return;
+                    }
+                    setStep(2);
+                  }}
                   className="btn-blue"
                 >
                   下一步
@@ -965,8 +1027,13 @@ export default function UploadPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStep(3)}
-                  disabled={!canProceedStep2}
+                  onClick={() => {
+                    if (!canProceedStep2) {
+                      alert('无法进入下一步：\n\n• ' + step2BlockReasons.join('\n• '));
+                      return;
+                    }
+                    setStep(3);
+                  }}
                   className="btn-blue"
                 >
                   下一步
@@ -1054,28 +1121,49 @@ export default function UploadPage() {
                 支持 MC 版本<span className="req">*</span>
               </label>
               <span className="form-hint" style={{ marginBottom: 8 }}>
-                选择该版本兼容的 Minecraft 版本（可多选）
+                选择该版本兼容的 Minecraft 版本（可多选，按发布时间倒序）
               </span>
-              <div className="flex flex-wrap gap-1.5">
-                {GAME_VERSIONS.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => toggleArrayValue('gameVersions', v)}
-                    className="badge inline-flex items-center gap-1"
-                    style={{
-                      cursor: 'pointer',
-                      background: form.gameVersions.includes(v) ? 'var(--accent-blue)' : 'transparent',
-                      color: form.gameVersions.includes(v) ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
-                      border: '1px solid var(--border-strong)',
-                      padding: '5px 12px',
-                      fontSize: 12,
-                      fontFamily: 'var(--font-mono)',
-                    }}
-                  >
-                    {form.gameVersions.includes(v) && <Check size={12} />}
-                    {v}
-                  </button>
+              <div
+                className="flex flex-col gap-3 overflow-y-auto pr-1"
+                style={{ maxHeight: 280 }}
+              >
+                {MC_VERSION_GROUPS.map((group) => (
+                  <div key={group.label} className="flex flex-col gap-1.5">
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: 'var(--muted-foreground)',
+                        fontFamily: 'var(--font-mono)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {group.label}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {group.versions.map((item) => (
+                        <button
+                          key={item.v}
+                          type="button"
+                          onClick={() => toggleArrayValue('gameVersions', item.v)}
+                          className="badge inline-flex items-center gap-1"
+                          style={{
+                            cursor: 'pointer',
+                            background: form.gameVersions.includes(item.v) ? 'var(--accent-blue)' : 'transparent',
+                            color: form.gameVersions.includes(item.v) ? 'var(--accent-blue-foreground)' : 'var(--foreground)',
+                            border: '1px solid var(--border-strong)',
+                            padding: '5px 12px',
+                            fontSize: 12,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          {form.gameVersions.includes(item.v) && <Check size={12} />}
+                          {item.v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -1158,9 +1246,15 @@ export default function UploadPage() {
                   上一步
                 </button>
                 <button
-                  type="submit"
-                  onClick={handleSubmit}
-                  disabled={!canSubmit || submitting}
+                  type="button"
+                  onClick={(e) => {
+                    if (submitting) return;
+                    if (!canSubmit) {
+                      alert('无法提交，请检查以下问题：\n\n• ' + submitBlockReasons.join('\n• '));
+                      return;
+                    }
+                    handleSubmit(e as unknown as FormEvent);
+                  }}
                   className="btn-blue"
                 >
                   {submitting ? (

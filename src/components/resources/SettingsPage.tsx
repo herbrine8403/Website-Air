@@ -166,7 +166,8 @@ export default function SettingsPage() {
     setDeleteError(null);
     try {
       const targetSlug = pendingDelete.slug || String(pendingDelete.id);
-      await api.delete<DeleteResponse>(`/resources/delete.php?slug=${encodeURIComponent(targetSlug)}`);
+      // 后端 delete.php 期望 ?id=xxx（数字 ID），不是 slug
+      await api.delete<DeleteResponse>(`/resources/delete.php?id=${encodeURIComponent(String(pendingDelete.id))}`);
       setPendingDelete(null);
       // 重新加载
       fetchList();
@@ -407,8 +408,9 @@ export default function SettingsPage() {
                   const detailHref = `/resources/detail?slug=${encodeURIComponent(slug)}`;
                   const uploadHref = `/resources/upload?edit=${encodeURIComponent(slug)}`;
                   const versionsHref = `/resources/versions?slug=${encodeURIComponent(slug)}`;
-                  const downloads = r.downloads ?? r.download_count ?? 0;
-                  const rating = r.rating ?? r.rating_average ?? 0;
+                  const downloads = r.downloads_count ?? r.downloads ?? r.download_count ?? 0;
+                  const rating = r.rating_avg ?? r.rating ?? r.rating_average ?? 0;
+                  const resourceTitle = r.title ?? r.name ?? '未命名资源';
                   const status = r.status || activeTab;
                   return (
                     <tr
@@ -446,9 +448,9 @@ export default function SettingsPage() {
                             <span
                               className="font-semibold truncate"
                               style={{ fontSize: 14, color: 'var(--foreground)', maxWidth: 220 }}
-                              title={r.name}
+                              title={resourceTitle}
                             >
-                              {r.name}
+                              {resourceTitle}
                             </span>
                             <span
                               style={{
@@ -772,7 +774,7 @@ export default function SettingsPage() {
                   className="mt-1"
                   style={{ fontSize: 14, color: 'var(--muted-foreground)', margin: 0 }}
                 >
-                  确定删除 <strong style={{ color: 'var(--foreground)' }}>{pendingDelete.name}</strong>
+                  确定删除 <strong style={{ color: 'var(--foreground)' }}>{pendingDelete.title ?? pendingDelete.name ?? '此资源'}</strong>
                   ？此操作不可撤销，所有版本和文件都将被永久删除。
                 </p>
               </div>
