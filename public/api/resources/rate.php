@@ -13,7 +13,15 @@ $input = get_input_json();
 
 $db = getDBConnection();
 
-$resource_id = isset($input['resource_id']) ? intval($input['resource_id']) : 0;
+// 兼容 query 和 body 两种传参方式
+$resource_id = 0;
+if (isset($input['resource_id'])) {
+    $resource_id = intval($input['resource_id']);
+} elseif (isset($_GET['resource_id'])) {
+    $resource_id = intval($_GET['resource_id']);
+} elseif (isset($_GET['id'])) {
+    $resource_id = intval($_GET['id']);
+}
 $rating = isset($input['rating']) ? intval($input['rating']) : 0;
 
 if ($resource_id <= 0) {
@@ -39,8 +47,9 @@ if (!$resource) {
 $db->begin_transaction();
 
 try {
-    // 查询是否已有该用户的评分评论（parent_id IS NULL AND rating > 0）
-    $stmt = $db->prepare('SELECT id FROM resource_comments WHERE resource_id = ? AND user_id = ? AND parent_id IS NULL AND rating > 0 ORDER BY id DESC LIMIT 1');
+    // 使用 SELECT ... FOR UPDATE 锁住该用户的评分行，防止并发请求重复创建评分
+    // 重要：MySQL InnoDB 在事务中行锁，确保两个并发请求不会同时"未找到"再"创建"
+    $stmt = $db->prepare('SELECT id, content FROM resource_comments WHERE resource_id = ? AND user_id = ? AND parent_id IS NULL AND rating > 0 ORDER BY id DESC LIMIT 1 FOR UPDATE');
     $stmt->bind_param('ii', $resource_id, $user_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -48,18 +57,21 @@ try {
     $stmt->close();
 
     if ($existing) {
-        // 更新已有评分
+        // 更新已有评分（保留 content，避免覆盖已有评论）
         $existing_id = (int)$existing['id'];
         $stmt = $db->prepare('UPDATE resource_comments SET rating = ? WHERE id = ?');
         $stmt->bind_param('ii', $rating, $existing_id);
         $stmt->execute();
         $stmt->close();
     } else {
-        // 创建新的评分记录（content 可为空字符串，因为这是独立评分）
+        // 兼容旧逻辑：用户首次评分，且没有评论，创建一条 content 为空字符串的评分评论
+        // 注意：comment.php 的 GET 接口会过滤 content 为空的评论，所以这条不会出现在评论区
+        // 但如果用户后续在 comment.php 提交带 rating 的评论，会查找并更新此条记录的 content
+        // 重要：parent_id 不能通过 bind_param 'i' 类型传 null（PHP 8.1+ 会 TypeError）
+        // 解决方案：使用 SQL NULL 字面量
         $empty_content = '';
-        $null = null;
-        $stmt = $db->prepare('INSERT INTO resource_comments (resource_id, user_id, parent_id, content, rating, created_at) VALUES (?, ?, ?, ?, ?, NOW())');
-        $stmt->bind_param('iissi', $resource_id, $user_id, $null, $empty_content, $rating);
+        $stmt = $db->prepare('INSERT INTO resource_comments (resource_id, user_id, parent_id, content, rating, created_at) VALUES (?, ?, NULL, ?, ?, NOW())');
+        $stmt->bind_param('iisi', $resource_id, $user_id, $empty_content, $rating);
         $stmt->execute();
         $stmt->close();
     }

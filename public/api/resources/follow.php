@@ -13,7 +13,15 @@ $input = get_input_json();
 
 $db = getDBConnection();
 
-$resource_id = isset($input['resource_id']) ? intval($input['resource_id']) : 0;
+// 兼容 query 和 body 两种传参方式
+$resource_id = 0;
+if (isset($input['resource_id'])) {
+    $resource_id = intval($input['resource_id']);
+} elseif (isset($_GET['resource_id'])) {
+    $resource_id = intval($_GET['resource_id']);
+} elseif (isset($_GET['id'])) {
+    $resource_id = intval($_GET['id']);
+}
 if ($resource_id <= 0) {
     json_response(['success' => false, 'error' => 'resource_id 为必填字段'], 400);
 }
