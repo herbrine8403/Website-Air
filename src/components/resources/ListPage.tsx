@@ -27,9 +27,14 @@ import {
   EmptyState,
   PageContainer,
   Breadcrumb,
+  getAuthorName,
+  getTagStrings,
+  getCoverUrl,
+  getResourceTitle,
   type Resource,
   type ResourceListResponse,
 } from './shared';
+import { MC_VERSION_GROUPS } from './mc-versions';
 
 type SortKey = 'newest' | 'popular' | 'downloads' | 'relevance';
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
@@ -43,8 +48,6 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
 const IOS_TAGS = ['iOS移植', '修改版', '触屏适配', 'AirPack', 'TrollStore'];
 // 加载器
 const LOADER_TAGS = ['Fabric', 'Forge', 'NeoForge', 'Quilt', 'LiteLoader'];
-// 游戏版本
-const GAME_VERSIONS = ['1.20.1', '1.20.4', '1.20.6', '1.21', '1.21.1', '26.1', '26.2', '1.19.2', '1.18.2', '1.16.5', '1.12.2'];
 // 环境
 const ENVIRONMENTS = ['客户端', '服务端'];
 
@@ -392,16 +395,38 @@ export default function ListPage() {
             </div>
           </FilterGroup>
 
-          {/* 游戏版本 */}
+          {/* 游戏版本（滑动列表，按主更新分组，最新在上） */}
           <FilterGroup title="MC 版本">
-            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto">
-              {GAME_VERSIONS.map((v) => (
-                <FilterCheck
-                  key={v}
-                  label={v}
-                  checked={filters.gameVersions.includes(v)}
-                  onChange={() => toggleFilter('gameVersions', v)}
-                />
+            <div
+              className="flex flex-col gap-3 overflow-y-auto pr-1"
+              style={{ maxHeight: 280 }}
+            >
+              {MC_VERSION_GROUPS.map((group) => (
+                <div key={group.label} className="flex flex-col gap-1.5">
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: 'var(--muted-foreground)',
+                      fontFamily: 'var(--font-mono)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      marginTop: 4,
+                    }}
+                  >
+                    {group.label}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {group.versions.map((item) => (
+                      <FilterCheck
+                        key={item.v}
+                        label={item.v}
+                        checked={filters.gameVersions.includes(item.v)}
+                        onChange={() => toggleFilter('gameVersions', item.v)}
+                      />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </FilterGroup>
@@ -797,11 +822,12 @@ function GridCard({ resource }: { resource: Resource }) {
   const Icon = meta.icon;
   const slug = resource.slug || resource.id;
   const detailHref = `/resources/detail?slug=${encodeURIComponent(String(slug))}`;
-  const tags = (resource.tags ?? []).slice(0, 3);
-  const downloads = resource.downloads ?? resource.download_count ?? 0;
-  const rating = resource.rating ?? resource.rating_average ?? 0;
-  const author = resource.author || resource.author_username || '匿名';
-  const cover = resource.cover_url || resource.thumbnail_url || resource.icon_url;
+  const tags = getTagStrings(resource.tags).slice(0, 3);
+  const downloads = resource.downloads_count ?? resource.downloads ?? resource.download_count ?? 0;
+  const rating = resource.rating_avg ?? resource.rating ?? resource.rating_average ?? 0;
+  const authorName = getAuthorName(resource);
+  const cover = getCoverUrl(resource);
+  const title = getResourceTitle(resource);
 
   return (
     <Link
@@ -818,7 +844,7 @@ function GridCard({ resource }: { resource: Resource }) {
         }}
       >
         {cover ? (
-          <img src={cover} alt={resource.name} loading="lazy" className="w-full h-full object-cover" />
+          <img src={cover} alt={title} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <Icon size={48} strokeWidth={1.5} />
         )}
@@ -830,13 +856,13 @@ function GridCard({ resource }: { resource: Resource }) {
         <div
           className="font-semibold truncate"
           style={{ color: 'var(--foreground)', fontSize: 15 }}
-          title={resource.name}
+          title={title}
         >
-          {resource.name}
+          {title}
         </div>
         <div className="inline-flex items-center gap-1 text-xs" style={{ color: 'var(--muted-foreground)' }}>
           <User size={12} />
-          <span>by {author}</span>
+          <span>by {authorName}</span>
         </div>
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
@@ -870,11 +896,12 @@ function ListRow({ resource }: { resource: Resource }) {
   const Icon = meta.icon;
   const slug = resource.slug || resource.id;
   const detailHref = `/resources/detail?slug=${encodeURIComponent(String(slug))}`;
-  const tags = resource.tags ?? [];
-  const downloads = resource.downloads ?? resource.download_count ?? 0;
-  const rating = resource.rating ?? resource.rating_average ?? 0;
-  const author = resource.author || resource.author_username || '匿名';
-  const cover = resource.cover_url || resource.thumbnail_url || resource.icon_url;
+  const tags = getTagStrings(resource.tags);
+  const downloads = resource.downloads_count ?? resource.downloads ?? resource.download_count ?? 0;
+  const rating = resource.rating_avg ?? resource.rating ?? resource.rating_average ?? 0;
+  const authorName = getAuthorName(resource);
+  const cover = getCoverUrl(resource);
+  const title = getResourceTitle(resource);
   const sourceMeta = getSourceMeta(resource.source || (resource.sources && resource.sources[0]));
 
   return (
@@ -895,7 +922,7 @@ function ListRow({ resource }: { resource: Resource }) {
         }}
       >
         {cover ? (
-          <img src={cover} alt={resource.name} loading="lazy" className="w-full h-full object-cover" />
+          <img src={cover} alt={title} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <Icon size={28} strokeWidth={1.5} />
         )}
@@ -905,11 +932,11 @@ function ListRow({ resource }: { resource: Resource }) {
           className="font-semibold truncate"
           style={{ color: 'var(--foreground)', fontSize: 15 }}
         >
-          {resource.name}
+          {title}
         </div>
         <div className="inline-flex items-center gap-1 text-xs mt-1" style={{ color: 'var(--muted-foreground)' }}>
           <User size={12} />
-          <span>by {author}</span>
+          <span>by {authorName}</span>
         </div>
         {resource.summary && (
           <div

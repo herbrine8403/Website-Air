@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -6,6 +6,7 @@ import {
   Clock,
   History,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -137,7 +138,8 @@ export default function VersionsPage() {
     );
   }
 
-  const resourceName = data?.resource?.name || '资源';
+  // 后端 versions.php 不返回 resource/total 字段，使用本地 fallback
+  const resourceName = data?.resource?.title ?? data?.resource?.name ?? '资源';
   const resourceSlug = data?.resource?.slug || resourceId;
   const total = data?.total ?? filteredVersions.length;
 
@@ -365,16 +367,62 @@ function VersionCard({
   version: VersionItem;
   canDownload: boolean;
 }) {
+  const [downloadLoading, setDownloadLoading] = useState(false);
   const versionLabel = version.version_number || version.version || '未知';
   const versionType = version.version_type || version.type || 'release';
   const typeLabel = versionType === 'beta' ? 'Beta' : versionType === 'alpha' ? '快照' : '正式版';
   const typeBadgeClass =
     versionType === 'beta' ? 'badge-orange' : versionType === 'alpha' ? 'badge-gray' : 'badge-green';
   const loaders = version.loaders ?? [];
-  const gameVersions = version.game_versions ?? [];
+  const gameVersions = version.mc_versions ?? version.game_versions ?? [];
   const fileSize = version.file_size || version.size;
-  const downloads = version.downloads ?? version.download_count ?? 0;
-  const sources = version.sources ?? [];
+  const downloads = version.downloads_count ?? version.downloads ?? version.download_count ?? 0;
+  // 后端返回 files 数组，前端兼容读取 sources/files
+  const sources = (version.files ?? version.sources ?? []) as any[];
+
+  // 统一下载逻辑：所有源都走 download.php，确保下载计数正确且 Air 源能正常工作
+  // 修复前 bug：直接用 source_url 作为 a 标签的 href，但 Air 源不存储 source_url，
+  // 导致 Air 源下载按钮跳到 '#'，无法下载文件
+  const handleDownload = useCallback(async () => {
+    const firstSource = sources[0];
+    if (!firstSource) {
+      alert('未找到下载源');
+      return;
+    }
+    const sourceKey = (firstSource as any).source_type ?? (firstSource as any).source;
+    const sourceUrl = (firstSource as any).source_url ?? (firstSource as any).url;
+
+    // 外部源（modrinth/curseforge/github）：直接打开 URL，不经过 download.php
+    // （外部源无需登录认证，直接跳转到外部链接）
+    if (sourceUrl && (sourceKey === 'modrinth' || sourceKey === 'curseforge' || sourceKey === 'github')) {
+      window.open(sourceUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Air 源或其他需要登录的源：调用 download.php 获取预签名 URL
+    if (!canDownload) return; // LoginPrompt 会处理未登录情况
+    setDownloadLoading(true);
+    try {
+      const res = await api.post<{ success: boolean; url?: string; redirect_url?: string; filename?: string }>(
+        '/resources/download.php',
+        {
+          version_id: String(version.id),
+          source_type: sourceKey,
+        }
+      );
+      const url = res.url || res.redirect_url || sourceUrl;
+      if (url) {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        alert('未获取到下载链接');
+      }
+    } catch (err) {
+      if (err instanceof ApiError) alert(err.message);
+      else alert('下载失败');
+    } finally {
+      setDownloadLoading(false);
+    }
+  }, [sources, version.id, canDownload]);
 
   return (
     <div
@@ -443,7 +491,9 @@ function VersionCard({
           {sources.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap mt-1">
               {sources.map((s, idx) => {
-                const meta = getSourceMetaForVersion(s.source);
+                // 后端返回 source_type，前端封装可能用 source
+                const sourceKey = (s as any).source_type ?? (s as any).source;
+                const meta = getSourceMetaForVersion(sourceKey);
                 if (!meta) return null;
                 return (
                   <span
@@ -479,15 +529,19 @@ function VersionCard({
           </div>
           <div className="flex items-center gap-2">
             {canDownload ? (
-              <a
-                href={sources[0]?.url || '#'}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloadLoading}
                 className="btn-blue btn-sm"
               >
-                <Download size={14} />
+                {downloadLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
                 下载
-              </a>
+              </button>
             ) : (
               <LoginPrompt
                 trigger={

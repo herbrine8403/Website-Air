@@ -12,6 +12,7 @@ import {
   Loader2,
   Check,
   ExternalLink,
+  Shield,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -86,19 +87,16 @@ export default function VersionDetailPage() {
         window.open(source.url, '_blank', 'noopener,noreferrer');
         return;
       }
-      // Air 官网源 - 调用 download API
+      // Air 官网源 - 调用 download API 获取预签名 URL
       if (!user) return; // LoginPrompt 会处理
-      if (source.source === 'air' && !source.url) {
-        alert('Air 官网对象存储即将上线，暂未配置');
-        return;
-      }
       setDownloadLoading(source.source);
       try {
-        const params = new URLSearchParams();
-        params.set('version_id', versionId);
-        params.set('source', source.source);
-        const res = await api.post<{ success: boolean; url?: string; redirect_url?: string }>(
-          `/resources/download.php?${params.toString()}`
+        const res = await api.post<{ success: boolean; url?: string; redirect_url?: string; filename?: string }>(
+          '/resources/download.php',
+          {
+            version_id: versionId,
+            source_type: source.source,
+          }
         );
         const url = res.url || res.redirect_url || source.url;
         if (url) {
@@ -151,16 +149,25 @@ export default function VersionDetailPage() {
   const typeBadgeClass =
     versionType === 'beta' ? 'badge-orange' : versionType === 'alpha' ? 'badge-gray' : 'badge-green';
   const loaders = version.loaders ?? [];
-  const gameVersions = version.game_versions ?? [];
+  const gameVersions = version.mc_versions ?? version.game_versions ?? [];
   const fileSize = version.file_size || version.size;
-  const downloads = version.downloads ?? version.download_count ?? 0;
-  const sources = (version.sources ?? []) as VersionSource[];
+  const downloads = version.downloads_count ?? version.downloads ?? version.download_count ?? 0;
+  // 后端返回 files 数组，映射为前端 VersionSource 结构
+  const rawFiles = (version.files ?? version.sources ?? []) as any[];
+  const sources: VersionSource[] = rawFiles.map((f: any) => ({
+    source: f.source_type ?? f.source,
+    url: f.source_url ?? f.url,
+    filename: f.file_name ?? f.filename,
+    size: f.file_size ?? f.size,
+    sha256: f.sha256,
+    downloads: f.downloads_count ?? f.downloads,
+  }));
   const dependencies = version.dependencies ?? [];
   const resourceSlug = resource?.slug || resource?.id || '';
 
   const breadcrumbItems = [
     { label: '资源中心', href: '/resources' },
-    { label: resource?.name || '资源', href: `/resources/detail?slug=${encodeURIComponent(String(resourceSlug))}` },
+    { label: resource?.title ?? resource?.name ?? '资源', href: `/resources/detail?slug=${encodeURIComponent(String(resourceSlug))}` },
     { label: '版本', href: `/resources/versions?id=${encodeURIComponent(String(resource?.id || ''))}` },
     { label: versionLabel },
   ];
@@ -187,20 +194,15 @@ export default function VersionDetailPage() {
               >
                 版本 {versionLabel}
               </h1>
-              {version.is_latest && (
-                <span className="badge badge-green" style={{ fontSize: 11 }}>
-                  Latest
-                </span>
-              )}
               <span className={`badge ${typeBadgeClass}`} style={{ fontSize: 11 }}>
                 {typeLabel}
               </span>
             </div>
             <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
-              {version.published_at && (
+              {(version.published_at || version.created_at) && (
                 <span className="inline-flex items-center gap-1.5">
                   <Clock size={14} />
-                  {formatDate(version.published_at)} 发布
+                  {formatDate(version.published_at || version.created_at)} 发布
                 </span>
               )}
             </div>
@@ -357,15 +359,10 @@ export default function VersionDetailPage() {
               </InfoRow>
               <InfoRow label="版本类型">
                 <span>{typeLabel}</span>
-                {version.is_latest && (
-                  <span className="badge badge-green" style={{ fontSize: 10, marginLeft: 4 }}>
-                    Latest
-                  </span>
-                )}
               </InfoRow>
-              {version.published_at && (
+              {(version.published_at || version.created_at) && (
                 <InfoRow label="发布日期">
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{formatDate(version.published_at)}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{formatDate(version.published_at || version.created_at)}</span>
                 </InfoRow>
               )}
               {loaders.length > 0 && (
@@ -414,13 +411,13 @@ export default function VersionDetailPage() {
                 sources.map((s, idx) => {
                   const meta = getSourceMeta(s.source);
                   if (!meta) return null;
-                  const isAirSource = s.source === 'air' && !s.url;
+                  const isAirSource = s.source === 'air';
                   return (
                     <DownloadSourceButton
                       key={idx}
                       meta={meta}
                       url={s.url}
-                      disabled={isAirSource}
+                      disabled={false}
                       isAir={isAirSource}
                       loading={downloadLoading === s.source}
                       onClick={() => handleDownload(s)}
@@ -488,7 +485,8 @@ function FileRow({
   const meta = getSourceMeta(source.source);
   if (!meta) return null;
   const isExternal = source.source === 'modrinth' || source.source === 'curseforge' || source.source === 'github';
-  const isAir = source.source === 'air' && !source.url;
+  // Air 源：必须通过 download.php 走登录认证流程
+  const isAir = source.source === 'air';
 
   return (
     <div
@@ -531,20 +529,16 @@ function FileRow({
                 外部链接
               </span>
             )}
+            {isAir && (
+              <span className="inline-flex items-center gap-0.5">
+                <Shield size={10} />
+                需要登录
+              </span>
+            )}
           </div>
         </div>
         <div className="flex-shrink-0">
-          {isAir ? (
-            // TODO: 对象存储配置后启用
-            <span
-              className="btn-blue btn-sm"
-              style={{ opacity: 0.5, cursor: 'not-allowed' }}
-              title="对象存储即将上线"
-            >
-              <Download size={14} />
-              暂未配置
-            </span>
-          ) : isExternal ? (
+          {isExternal ? (
             <a
               href={source.url}
               target="_blank"
@@ -653,24 +647,8 @@ function DownloadSourceButton({
   canDownload: boolean;
 }) {
   if (!meta) return null;
+  // 外部源（modrinth/curseforge/github）且有 url：直接跳转
   const isExternal = meta.key !== 'air' && url;
-
-  if (isAir) {
-    // TODO: 对象存储配置后启用
-    return (
-      <div
-        className="text-center py-2 px-3 rounded text-sm"
-        style={{
-          background: 'var(--muted)',
-          color: 'var(--muted-foreground)',
-          border: '1px dashed var(--border-strong)',
-        }}
-      >
-        <span style={{ color: meta.color, fontWeight: 600 }}>{meta.label}</span>
-        对象存储即将上线
-      </div>
-    );
-  }
 
   if (disabled) {
     return (
@@ -719,6 +697,7 @@ function DownloadSourceButton({
     );
   }
 
+  // Air 源或其他需要登录的源：未登录时显示 LoginPrompt
   if (!canDownload) {
     return (
       <LoginPrompt trigger={btn} message={`从 ${meta.label} 下载需要登录`} />

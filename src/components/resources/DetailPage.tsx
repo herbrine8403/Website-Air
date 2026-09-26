@@ -34,16 +34,31 @@ import {
   EmptyState,
   PageContainer,
   Breadcrumb,
+  getAuthorName,
+  getAuthorId,
+  getTagStrings,
+  getGalleryUrls,
+  getDependencies,
+  getStringArray,
+  getCoverUrl,
+  getResourceTitle,
   type ResourceDetailResponse,
   type Resource,
   type VersionItem,
 } from './shared';
 
+interface CommentAuthor {
+  id?: string | number;
+  username?: string;
+  avatar_url?: string | null;
+}
+
 interface Comment {
   id: string | number;
   user_id?: string | number;
   username?: string;
-  author?: string;
+  /** 后端新格式为对象，旧格式为字符串 */
+  author?: CommentAuthor | string;
   author_username?: string;
   avatar_url?: string | null;
   content?: string;
@@ -51,6 +66,24 @@ interface Comment {
   rating?: number;
   created_at?: string;
   replies?: Comment[];
+}
+
+/** 从 comment.author 提取用户名（兼容 string 和 object 两种格式） */
+function getCommentAuthorName(comment: Pick<Comment, 'username' | 'author' | 'author_username'>): string {
+  const { username, author, author_username } = comment;
+  if (typeof username === 'string' && username) return username;
+  if (typeof author === 'object' && author !== null && author.username) return author.username;
+  if (typeof author === 'string' && author) return author;
+  return author_username || '匿名';
+}
+
+/** 从 comment.author 提取头像 URL */
+function getCommentAvatarUrl(comment: Pick<Comment, 'author' | 'avatar_url'>): string | undefined {
+  const { author } = comment;
+  if (typeof author === 'object' && author !== null) {
+    return author.avatar_url ?? undefined;
+  }
+  return comment.avatar_url ?? undefined;
 }
 
 interface CommentsResponse {
@@ -113,12 +146,22 @@ export default function DetailPage() {
         );
         if (cancelled) return;
         setResource(res.resource ?? null);
-        setVersions(res.resource?.versions ?? []);
-        // 如果有关评论和评分信息，也设置
+        // 后端 detail.php 只返回 latest_version（单个对象），把它包装成数组用于版本 tab 展示
         const r = res.resource as any;
+        // 防御性检查：确保 versions 是数组
+        let versionsArr: VersionItem[] = [];
+        if (Array.isArray(r.versions)) {
+          versionsArr = r.versions;
+        } else if (r.latest_version && typeof r.latest_version === 'object') {
+          versionsArr = [r.latest_version];
+        }
+        setVersions(versionsArr);
+        // 同步关注状态（后端返回 is_following 字段）
+        setFollowing(!!r.is_following);
+        // 如果有关评论和评分信息，也设置
         if (r.rating_distribution) {
           setRatingInfo({
-            average: r.rating ?? r.rating_average ?? 0,
+            average: r.rating_avg ?? r.rating ?? r.rating_average ?? 0,
             count: r.rating_count ?? 0,
             distribution: r.rating_distribution,
           });
@@ -146,10 +189,11 @@ export default function DetailPage() {
         if (searchParams.get('slug')) params.set('slug', searchParams.get('slug')!);
         else params.set('id', searchParams.get('id')!);
         const res = await api.get<CommentsResponse>(
-          `/resources/comments.php?${params.toString()}`
+          `/resources/comment.php?${params.toString()}`
         );
         if (cancelled) return;
-        setComments(res.comments ?? []);
+        // 防御性检查：确保 comments 是数组
+        setComments(Array.isArray(res.comments) ? res.comments : []);
       } catch {
         // 静默失败
       }
@@ -166,12 +210,26 @@ export default function DetailPage() {
       if (!resource) return;
       setActionLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (versionId) params.set('version_id', String(versionId));
-        if (source) params.set('source', source);
-        else if (resource.source) params.set('source', resource.source);
+        // 后端 download.php 期望 body 中包含 version_id 和 source_type
+        // source 优先级：传入参数 > 资源最新版本的第一个文件源 > 资源 source 字段
+        const latestFiles = (resource as any).latest_version?.files ?? [];
+        const firstFileSource = latestFiles[0]?.source_type;
+        const effectiveSource = source || firstFileSource || resource.source || '';
+        if (!versionId) {
+          alert('未找到可下载的版本');
+          return;
+        }
+        if (!effectiveSource) {
+          alert('未找到可用的下载源');
+          return;
+        }
+        const body = {
+          version_id: String(versionId),
+          source_type: effectiveSource,
+        };
         const res = await api.post<{ success: boolean; url?: string; redirect_url?: string }>(
-          `/resources/download.php?${params.toString()}`
+          '/resources/download.php',
+          body
         );
         const url = res.url || res.redirect_url;
         if (url) {
@@ -192,7 +250,7 @@ export default function DetailPage() {
     if (!user || !resource) return;
     setActionLoading(true);
     try {
-      await api.post(`/resources/follow.php?id=${encodeURIComponent(String(resource.id))}`);
+      await api.post('/resources/follow.php', { resource_id: String(resource.id) });
       setFollowing((v) => !v);
     } catch (err) {
       if (err instanceof ApiError) alert(err.message);
@@ -211,29 +269,19 @@ export default function DetailPage() {
       if (!content) return;
       setSubmitting(true);
       try {
-        const params = new URLSearchParams();
-        params.set('id', String(resource.id));
-        const payload: Record<string, unknown> = { content };
+        // 后端 comment.php 期望 body 中包含 resource_id 字段
+        const payload: Record<string, unknown> = {
+          resource_id: String(resource.id),
+          content,
+        };
         if (newRating > 0) payload.rating = newRating;
-        await api.post(
-          `/resources/comment.php?${params.toString()}`,
-          payload
-        );
-        // 评分单独提交
-        if (newRating > 0) {
-          try {
-            await api.post(`/resources/rate.php?id=${encodeURIComponent(String(resource.id))}`, {
-              rating: newRating,
-            });
-          } catch {
-            // 评分失败不阻塞
-          }
-        }
+        await api.post('/resources/comment.php', payload);
+        // comment.php 已经处理 rating 并更新 rating_avg/rating_count，无需再调 rate.php
         // 重新加载评论
         const res = await api.get<CommentsResponse>(
-          `/resources/comments.php?id=${encodeURIComponent(String(resource.id))}`
+          `/resources/comment.php?id=${encodeURIComponent(String(resource.id))}`
         );
-        setComments(res.comments ?? []);
+        setComments(Array.isArray(res.comments) ? res.comments : []);
         setNewComment('');
         setNewRating(0);
       } catch (err) {
@@ -251,7 +299,7 @@ export default function DetailPage() {
     if (typeof navigator !== 'undefined' && navigator.share) {
       navigator
         .share({
-          title: resource?.name || 'Air 资源',
+          title: resource?.title || resource?.name || 'Air 资源',
           url: window.location.href,
         })
         .catch(() => {});
@@ -283,27 +331,44 @@ export default function DetailPage() {
 
   const meta = getTypeMeta(resource.type);
   const Icon = meta.icon;
-  const tags = resource.tags ?? [];
-  const cover = resource.cover_url || resource.thumbnail_url || resource.icon_url;
-  const gallery = (resource as any).gallery ?? [];
-  const loaders = (resource as any).loaders ?? [];
-  const gameVersions = (resource as any).game_versions ?? [];
-  const fileFormats = (resource as any).file_formats ?? [];
-  const license = (resource as any).license;
+  const tags = getTagStrings(resource.tags);
+  const cover = getCoverUrl(resource);
+  // 使用归一化函数处理 gallery，兼容 string[] 和 { image_url, caption }[] 两种格式
+  const gallery = getGalleryUrls((resource as any).gallery);
+  // 从 latest_version 读取 loaders 和 mc_versions（后端只在 latest_version 中返回）
+  // 兼容旧资源：loaders/game_versions 可能不存在于 latest_version，需回退到 resource 顶层
+  const latestVer = (resource as any).latest_version;
+  const loaders = getStringArray(latestVer?.loaders ?? (resource as any).loaders);
+  const gameVersions = getStringArray(
+    latestVer?.mc_versions ?? latestVer?.game_versions ?? (resource as any).game_versions
+  );
+  // 兼容旧资源：file_formats 可能为字符串或非数组
+  const fileFormats = getStringArray((resource as any).file_formats);
+  // 兼容旧资源：license 可能为对象或字符串
+  const rawLicense = (resource as any).license;
+  const license =
+    typeof rawLicense === 'string'
+      ? rawLicense
+      : rawLicense && typeof rawLicense === 'object'
+        ? String(rawLicense.name ?? rawLicense.id ?? '')
+        : '';
   const fileSize = (resource as any).file_size;
-  const dependencies = (resource as any).dependencies ?? [];
-  const author = resource.author || resource.author_username || '匿名';
-  const downloads = resource.downloads ?? resource.download_count ?? 0;
-  const follows = resource.follows ?? resource.follow_count ?? 0;
-  const rating = ratingInfo?.average ?? resource.rating ?? resource.rating_average ?? 0;
+  // 使用归一化函数处理 dependencies，兼容 { name, version } 和 { dep_name, dep_version } 两种格式
+  const dependencies = getDependencies((resource as any).dependencies);
+  const authorName = getAuthorName(resource);
+  const authorId = getAuthorId(resource);
+  const title = getResourceTitle(resource);
+  const downloads = resource.downloads_count ?? resource.downloads ?? resource.download_count ?? 0;
+  const follows = resource.followers_count ?? resource.follows ?? resource.follow_count ?? 0;
+  const rating = ratingInfo?.average ?? resource.rating_avg ?? resource.rating ?? resource.rating_average ?? 0;
   const ratingCount = ratingInfo?.count ?? resource.rating_count ?? 0;
   const sourceMeta = getSourceMeta(resource.source || (resource.sources && resource.sources[0]));
-  const isAuthor = user && (user.id === String((resource as any).author_id) || user.username === author);
+  const isAuthor = user && (user.id === String(authorId ?? (resource as any).author_id) || user.username === authorName);
 
   const breadcrumbItems = [
     { label: '资源中心', href: '/resources' },
     { label: meta.label, href: `/resources/list?type=${encodeURIComponent(resource.type || '')}` },
-    { label: resource.name },
+    { label: title },
   ];
 
   return (
@@ -330,7 +395,7 @@ export default function DetailPage() {
             }}
           >
             {cover ? (
-              <img src={cover} alt={resource.name} className="w-full h-full object-cover" />
+              <img src={cover} alt={title} className="w-full h-full object-cover" />
             ) : (
               <Icon size={64} strokeWidth={1.5} />
             )}
@@ -347,7 +412,7 @@ export default function DetailPage() {
                 margin: 0,
               }}
             >
-              {resource.name}
+              {title}
             </h1>
             <div
               className="inline-flex items-center gap-1.5 text-sm"
@@ -355,12 +420,12 @@ export default function DetailPage() {
             >
               <User size={14} />
               <span>by</span>
-              <Link
-                to={`/account/profile/${encodeURIComponent(author)}`}
+              <a
+                href={`/account.html#/account/profile/${encodeURIComponent(authorName)}`}
                 style={{ color: 'var(--accent-blue)', fontWeight: 500 }}
               >
-                {author}
-              </Link>
+                {authorName}
+              </a>
             </div>
             {/* 标签 */}
             <div className="flex flex-wrap gap-1.5">
@@ -552,7 +617,7 @@ export default function DetailPage() {
                 >
                   <img
                     src={cover}
-                    alt={resource.name}
+                    alt={title}
                     className="w-full"
                     style={{ maxHeight: 400, objectFit: 'cover' }}
                   />
@@ -763,7 +828,9 @@ export default function DetailPage() {
               )}
               {resource.latest_version && (
                 <InfoRow label="最新版本">
-                  <span style={{ fontFamily: 'var(--font-mono)' }}>{resource.latest_version}</span>
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>
+                    {resource.latest_version.version_number || '未知'}
+                  </span>
                   <span className="badge badge-green" style={{ fontSize: 10, marginLeft: 4 }}>
                     Latest
                   </span>
@@ -957,10 +1024,11 @@ function VersionRow({
   const typeLabel = versionType === 'beta' ? 'Beta' : versionType === 'alpha' ? '快照' : '正式版';
   const typeBadgeClass =
     versionType === 'beta' ? 'badge-orange' : versionType === 'alpha' ? 'badge-gray' : 'badge-green';
-  const loaders = version.loaders ?? [];
-  const gameVersions = version.game_versions ?? [];
+  // 兼容旧资源：loaders/game_versions/mc_versions 可能为非数组
+  const loaders = getStringArray(version.loaders);
+  const gameVersions = getStringArray(version.game_versions ?? version.mc_versions);
   const fileSize = version.file_size || version.size;
-  const downloads = version.downloads ?? version.download_count ?? 0;
+  const downloads = version.downloads ?? version.download_count ?? version.downloads_count ?? 0;
 
   return (
     <div
@@ -1153,10 +1221,12 @@ function RatingBlock({
 }
 
 function CommentItem({ comment }: { comment: Comment }) {
-  const username = comment.username || comment.author || comment.author_username || '匿名';
+  const username = getCommentAuthorName(comment);
   const initials = username.slice(0, 2).toUpperCase();
   const content = comment.content || comment.text || '';
   const rating = comment.rating ?? 0;
+  // 已注销账号使用灰色头像
+  const isDeactivated = /^已注销账号-\d+$/.test(username);
 
   return (
     <div className="flex gap-3">
@@ -1166,8 +1236,11 @@ function CommentItem({ comment }: { comment: Comment }) {
           width: 32,
           height: 32,
           borderRadius: '50%',
-          background: 'var(--accent-blue-soft)',
-          color: 'var(--accent-blue)',
+          background: isDeactivated
+            ? 'linear-gradient(135deg, #9ca3af, #6b7280)'
+            : 'var(--accent-blue-soft)',
+          color: isDeactivated ? '#f3f4f6' : 'var(--accent-blue)',
+          filter: isDeactivated ? 'grayscale(1)' : undefined,
           fontSize: 12,
           fontWeight: 600,
         }}
