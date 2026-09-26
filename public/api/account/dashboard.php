@@ -67,10 +67,10 @@ if ($row = $res->fetch_assoc()) {
 }
 $stmt->close();
 
-// forum_posts_count: topics + articles + questions
+// forum_posts_count: topics + articles + questions（仅已发布）
 $forum_count = 0;
 foreach (['forum_topics', 'forum_articles', 'forum_questions'] as $table) {
-    $stmt = $db->prepare("SELECT COUNT(*) AS cnt FROM $table WHERE user_id = ?");
+    $stmt = $db->prepare("SELECT COUNT(*) AS cnt FROM $table WHERE user_id = ? AND status = 'published'");
     $stmt->bind_param('i', $user_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -80,6 +80,22 @@ foreach (['forum_topics', 'forum_articles', 'forum_questions'] as $table) {
     $stmt->close();
 }
 $stats['forum_posts_count'] = $forum_count;
+
+// 各类型帖子数
+$stats['topics_count'] = 0;
+$stats['articles_count'] = 0;
+$stats['questions_count'] = 0;
+
+foreach (['forum_topics' => 'topics_count', 'forum_articles' => 'articles_count', 'forum_questions' => 'questions_count'] as $table => $key) {
+    $stmt = $db->prepare("SELECT COUNT(*) AS cnt FROM $table WHERE user_id = ? AND status = 'published'");
+    $stmt->bind_param('i', $user_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($row = $res->fetch_assoc()) {
+        $stats[$key] = (int)$row['cnt'];
+    }
+    $stmt->close();
+}
 
 // total_likes: 用户在论坛上收到的点赞（forum_replies + forum_answers 的 votes_up 之和）
 $reply_likes = 0;
@@ -138,9 +154,9 @@ while ($row = $res->fetch_assoc()) {
 }
 $stmt->close();
 
-// my_resources: 用户上传的资源列表（前 5 个，按 created_at 倒序）
+// my_resources: 用户上传的资源列表（前 5 个，按 created_at 倒序，仅已发布）
 $my_resources = [];
-$stmt = $db->prepare('SELECT id, slug, title, summary, type, cover_image, downloads_count, followers_count, created_at FROM resources WHERE user_id = ? ORDER BY created_at DESC LIMIT 5');
+$stmt = $db->prepare('SELECT id, slug, title, summary, type, cover_image, downloads_count, followers_count, created_at FROM resources WHERE user_id = ? AND status = "published" ORDER BY created_at DESC LIMIT 5');
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
 $res = $stmt->get_result();
