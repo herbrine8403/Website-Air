@@ -23,21 +23,26 @@ import { useAuth, type AuthUser } from '@/hooks/useAuth';
 
 interface DashboardResource {
   id: string | number;
-  name: string;
+  title: string;
+  name?: string;
   slug?: string;
   type?: string;
   category?: string;
+  downloads_count?: number;
   downloads?: number;
   updated_at?: string;
+  created_at?: string;
 }
 
 interface DashboardActivity {
   id: string | number;
-  type: 'upload' | 'forum_reply' | 'download' | 'update' | 'forum_post' | 'like' | string;
-  text: string;
+  type: 'resource' | 'topic' | 'article' | 'question' | 'reply' | 'answer' | string;
+  title?: string;
+  text?: string;
   link?: string;
   link_text?: string;
-  time: string;
+  created_at?: string;
+  time?: string;
   icon?: 'green' | 'purple' | 'orange' | 'blue' | 'red';
 }
 
@@ -47,10 +52,13 @@ interface DashboardData {
   stats?: {
     resources_count: number;
     total_downloads: number;
-    forum_posts: number;
+    forum_posts_count?: number;
+    forum_posts?: number;
     total_likes: number;
   };
+  recent_activities?: DashboardActivity[];
   activities?: DashboardActivity[];
+  my_resources?: DashboardResource[];
   resources?: DashboardResource[];
 }
 
@@ -120,9 +128,10 @@ export default function DashboardPage() {
   }, []);
 
   const user = data?.user ?? authUser;
-  const stats = data?.stats ?? { resources_count: 0, total_downloads: 0, forum_posts: 0, total_likes: 0 };
-  const activities = data?.activities ?? [];
-  const resources = (data?.resources ?? []).slice(0, 5);
+  const stats = data?.stats ?? { resources_count: 0, total_downloads: 0, forum_posts_count: 0, total_likes: 0 };
+  const forumPostsCount = stats.forum_posts_count ?? stats.forum_posts ?? 0;
+  const activities = data?.recent_activities ?? data?.activities ?? [];
+  const resources = (data?.my_resources ?? data?.resources ?? []).slice(0, 5);
 
   if (loading) {
     return (
@@ -159,7 +168,7 @@ export default function DashboardPage() {
   const statCards = [
     { icon: Package, label: '我的资源', value: formatNumber(stats.resources_count), suffix: '个' },
     { icon: Download, label: '总下载量', value: formatDownloads(stats.total_downloads), suffix: '' },
-    { icon: MessageSquare, label: '论坛帖子', value: formatNumber(stats.forum_posts), suffix: '' },
+    { icon: MessageSquare, label: '论坛帖子', value: formatNumber(forumPostsCount), suffix: '' },
     { icon: Heart, label: '获赞总数', value: formatNumber(stats.total_likes), suffix: '' },
   ];
 
@@ -233,10 +242,10 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex gap-3 flex-shrink-0 flex-wrap">
-          <Link to="/resources/upload" className="btn-blue">
+          <a href="/resources.html#/resources/upload" className="btn-blue">
             <Upload size={18} />
             上传资源
-          </Link>
+          </a>
           <Link to="/account/settings" className="btn-outline">
             <SettingsIcon size={18} />
             账户设置
@@ -308,34 +317,40 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="flex flex-col">
-                  {activities.map((act, idx) => (
-                    <div
-                      key={act.id ?? idx}
-                      className="flex items-start gap-3.5 py-3.5"
-                      style={{ borderBottom: idx === activities.length - 1 ? 'none' : '1px solid var(--border)' }}
-                    >
-                      <ActivityIcon type={act.type} iconColor={act.icon} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm" style={{ color: 'var(--foreground)', lineHeight: 1.5 }}>
-                          {act.text}
-                          {act.link && (
-                            <Link
-                              to={act.link}
-                              style={{ color: 'var(--accent-blue)', fontWeight: 500, marginLeft: 4 }}
-                            >
-                              {act.link_text || act.link}
-                            </Link>
-                          )}
-                        </div>
-                        <div
-                          className="mt-0.5 text-xs"
-                          style={{ color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}
-                        >
-                          {formatRelativeTime(act.time)}
+                  {activities.map((act, idx) => {
+                    const actText = act.title || act.text || '';
+                    const actTime = act.created_at || act.time || '';
+                    const actLink = getActivityLink(act.type, act.id);
+                    return (
+                      <div
+                        key={act.id ?? idx}
+                        className="flex items-start gap-3.5 py-3.5"
+                        style={{ borderBottom: idx === activities.length - 1 ? 'none' : '1px solid var(--border)' }}
+                      >
+                        <ActivityIcon type={act.type} iconColor={act.icon} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm" style={{ color: 'var(--foreground)', lineHeight: 1.5 }}>
+                            {actLink ? (
+                              <a
+                                href={actLink}
+                                style={{ color: 'var(--foreground)', fontWeight: 500 }}
+                              >
+                                {actText}
+                              </a>
+                            ) : (
+                              actText
+                            )}
+                          </div>
+                          <div
+                            className="mt-0.5 text-xs"
+                            style={{ color: 'var(--muted-foreground)', fontFamily: 'var(--font-mono)' }}
+                          >
+                            {formatRelativeTime(actTime)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -347,9 +362,9 @@ export default function DashboardPage() {
               <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: 22, color: 'var(--foreground)', letterSpacing: 'var(--tracking-tight)' }}>
                 我的资源
               </h2>
-              <Link to="/resources?mine=1" className="text-sm font-medium" style={{ color: 'var(--accent-blue)' }}>
+              <a href="/resources.html#/resources" className="text-sm font-medium" style={{ color: 'var(--accent-blue)' }}>
                 查看全部
-              </Link>
+              </a>
             </div>
             {resources.length === 0 ? (
               <div
@@ -365,57 +380,63 @@ export default function DashboardPage() {
                 <div className="text-sm" style={{ color: 'var(--muted-foreground)' }}>
                   分享你的第一个整合包或 Mod，与社区一起探索
                 </div>
-                <Link to="/resources/upload" className="btn-blue mt-2">
+                <a href="/resources.html#/resources/upload" className="btn-blue mt-2">
                   <Upload size={16} />
                   立即上传
-                </Link>
+                </a>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {resources.map((r) => (
-                  <Link
-                    key={r.id}
-                    to={`/resources/${r.slug || r.id}`}
-                    className="flex items-center gap-3.5 p-3.5 rounded-xl transition-all"
-                    style={{
-                      border: '1px solid var(--border)',
-                      background: 'var(--background)',
-                    }}
-                  >
-                    <div
-                      className="inline-flex items-center justify-center flex-shrink-0"
+                {resources.map((r) => {
+                  const rTitle = r.title || r.name || '';
+                  const rDownloads = r.downloads_count ?? r.downloads ?? 0;
+                  const rTime = r.updated_at || r.created_at || '';
+                  const rHref = `/resources.html#/resources/detail?slug=${encodeURIComponent(r.slug || String(r.id))}`;
+                  return (
+                    <a
+                      key={r.id}
+                      href={rHref}
+                      className="flex items-center gap-3.5 p-3.5 rounded-xl transition-all"
                       style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'linear-gradient(135deg, var(--brand-200), var(--brand-400))',
-                        color: 'var(--accent-blue)',
+                        border: '1px solid var(--border)',
+                        background: 'var(--background)',
                       }}
                     >
-                      <Package size={24} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-                        {r.name}
+                      <div
+                        className="inline-flex items-center justify-center flex-shrink-0"
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'linear-gradient(135deg, var(--brand-200), var(--brand-400))',
+                          color: 'var(--accent-blue)',
+                        }}
+                      >
+                        <Package size={24} />
                       </div>
-                      <div className="mt-1 flex gap-3 text-xs flex-wrap" style={{ color: 'var(--muted-foreground)' }}>
-                        <span className="inline-flex items-center gap-1">
-                          <Download size={14} />
-                          {formatDownloads(r.downloads ?? 0)} 下载
-                        </span>
-                        {r.updated_at && <span>{formatRelativeTime(r.updated_at)}更新</span>}
-                        {(r.type || r.category) && (
-                          <span
-                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                            style={{ background: 'var(--accent-blue-soft)', color: 'var(--accent-blue)' }}
-                          >
-                            {r.type || r.category}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+                          {rTitle}
+                        </div>
+                        <div className="mt-1 flex gap-3 text-xs flex-wrap" style={{ color: 'var(--muted-foreground)' }}>
+                          <span className="inline-flex items-center gap-1">
+                            <Download size={14} />
+                            {formatDownloads(rDownloads)} 下载
                           </span>
-                        )}
+                          {rTime && <span>{formatRelativeTime(rTime)}更新</span>}
+                          {(r.type || r.category) && (
+                            <span
+                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                              style={{ background: 'var(--accent-blue-soft)', color: 'var(--accent-blue)' }}
+                            >
+                              {r.type || r.category}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                    </a>
+                  );
+                })}
               </div>
             )}
           </section>
@@ -436,10 +457,10 @@ export default function DashboardPage() {
               快捷操作
             </h3>
             <div className="flex flex-col gap-1">
-              <QuickActionLink to="/resources/upload" icon={<Upload size={18} />} label="上传资源" />
-              <QuickActionLink to="/resources" icon={<Compass size={18} />} label="浏览资源" />
-              <QuickActionLink to="/forum" icon={<MessageCircle size={18} />} label="进入论坛" />
-              <QuickActionLink to="/forum/new" icon={<PenLine size={18} />} label="发布内容" />
+              <QuickActionLink href="/resources.html#/resources/upload" icon={<Upload size={18} />} label="上传资源" />
+              <QuickActionLink href="/resources.html#/resources" icon={<Compass size={18} />} label="浏览资源" />
+              <QuickActionLink href="/forum.html#/forum" icon={<MessageCircle size={18} />} label="进入论坛" />
+              <QuickActionLink href="/forum.html#/forum/new" icon={<PenLine size={18} />} label="发布内容" />
             </div>
           </div>
 
@@ -499,13 +520,13 @@ export default function DashboardPage() {
 function ActivityIcon({ type, iconColor }: { type: string; iconColor?: string }) {
   let Icon = Download;
   let color: 'green' | 'purple' | 'orange' | 'blue' | 'red' = 'blue';
-  if (type === 'upload') {
+  if (type === 'resource') {
     Icon = Upload;
     color = 'green';
-  } else if (type === 'forum_reply' || type === 'forum_post') {
+  } else if (type === 'reply' || type === 'answer') {
     Icon = MessageCircle;
     color = 'purple';
-  } else if (type === 'update') {
+  } else if (type === 'topic' || type === 'article' || type === 'question') {
     Icon = PenLine;
     color = 'orange';
   } else if (type === 'like') {
@@ -514,6 +535,15 @@ function ActivityIcon({ type, iconColor }: { type: string; iconColor?: string })
   } else if (type === 'download') {
     Icon = Download;
     color = 'blue';
+  } else if (type === 'upload' || type === 'forum_post') {
+    Icon = Upload;
+    color = 'green';
+  } else if (type === 'forum_reply') {
+    Icon = MessageCircle;
+    color = 'purple';
+  } else if (type === 'update') {
+    Icon = PenLine;
+    color = 'orange';
   }
 
   // 允许 API 显式指定颜色
@@ -541,10 +571,31 @@ function ActivityIcon({ type, iconColor }: { type: string; iconColor?: string })
   );
 }
 
-function QuickActionLink({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+// 根据活动类型和ID生成跨App跳转链接
+function getActivityLink(type: string, id: string | number): string | null {
+  const safeId = encodeURIComponent(String(id));
+  switch (type) {
+    case 'resource':
+      // 资源详情需要在 resources App 查看
+      return null; // 没有 slug，无法直接跳转，保留 null
+    case 'topic':
+      return `/forum.html#/forum/topic?id=${safeId}`;
+    case 'article':
+      return `/forum.html#/forum/article?id=${safeId}`;
+    case 'question':
+      return `/forum.html#/forum/question?id=${safeId}`;
+    case 'reply':
+    case 'answer':
+      return null; // 回复/回答需要上下文，暂不支持直接跳转
+    default:
+      return null;
+  }
+}
+
+function QuickActionLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
   return (
-    <Link
-      to={to}
+    <a
+      href={href}
       className="flex items-center gap-3 p-2.5 rounded-md transition-colors"
       style={{ color: 'var(--foreground)', fontSize: 14 }}
       onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--muted)')}
@@ -564,7 +615,7 @@ function QuickActionLink({ to, icon, label }: { to: string; icon: React.ReactNod
       </span>
       <span className="flex-1">{label}</span>
       <ArrowRight size={16} style={{ color: 'var(--muted-foreground)' }} />
-    </Link>
+    </a>
   );
 }
 

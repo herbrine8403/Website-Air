@@ -33,6 +33,7 @@ interface SettingsData {
   github_username: string | null;
   bilibili_username: string | null;
   notify_email_enabled: boolean;
+  password_enabled?: boolean;
 }
 
 interface Session {
@@ -75,8 +76,8 @@ export default function SettingsPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.get<{ success: boolean; settings?: SettingsData }>('/account/settings.php');
-        if (!cancelled && res.settings) setProfile(res.settings);
+        const res = await api.get<{ success: boolean; user?: SettingsData; settings?: SettingsData }>('/account/settings.php');
+        if (!cancelled && (res.settings || res.user)) setProfile(res.settings || res.user!);
         else if (!cancelled && authUser) {
           setProfile({
             username: authUser.username,
@@ -87,6 +88,7 @@ export default function SettingsPage() {
             github_username: authUser.github_username,
             bilibili_username: authUser.bilibili_username,
             notify_email_enabled: false,
+            password_enabled: true,
           });
         }
       } catch (err) {
@@ -222,11 +224,11 @@ export default function SettingsPage() {
         <div className="flex flex-col gap-8">
           {activeTab === 'account' && <AccountSection profile={profile} onUpdated={refresh} />}
           {activeTab === 'profile' && <ProfileSection profile={profile} onUpdated={refresh} />}
-          {activeTab === 'security' && <SecuritySection />}
+          {activeTab === 'security' && <SecuritySection profile={profile} />}
           {activeTab === 'sessions' && <SessionsSection />}
           {activeTab === 'pats' && <PatsSection />}
           {activeTab === 'notifications' && <NotificationsPrefSection profile={profile} />}
-          {activeTab === 'delete' && <DeleteAccountSection />}
+          {activeTab === 'delete' && <DeleteAccountSection profile={profile} />}
         </div>
       </div>
     </div>
@@ -696,7 +698,7 @@ function ProfileSection({ profile, onUpdated }: { profile: SettingsData | null; 
 
 // ============== 安全 Section ==============
 
-function SecuritySection() {
+function SecuritySection({ profile }: { profile: SettingsData | null }) {
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [confirmPwd, setConfirmPwd] = useState('');
@@ -710,12 +712,20 @@ function SecuritySection() {
   const [twoFactor, setTwoFactor] = useState(false);
   const [loginNotice, setLoginNotice] = useState(true);
 
+  // OAuth 用户（无密码账户）：password_enabled 为 false 表示尚未设置密码
+  const isOAuthUser = profile ? profile.password_enabled === false : false;
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
     setOk(null);
-    if (!oldPwd || !newPwd || !confirmPwd) {
-      setErr('请填写所有密码字段');
+    // OAuth 用户无需原密码，普通用户必须填写原密码
+    if (!isOAuthUser && !oldPwd) {
+      setErr('请填写原密码');
+      return;
+    }
+    if (!newPwd || !confirmPwd) {
+      setErr('请填写新密码和确认密码');
       return;
     }
     if (newPwd.length < 8) {
@@ -728,11 +738,10 @@ function SecuritySection() {
     }
     setSaving(true);
     try {
-      await api.post('/account/password.php', {
-        old_password: oldPwd,
-        new_password: newPwd,
-      });
-      setOk('密码已修改');
+      const payload: { new_password: string; old_password?: string } = { new_password: newPwd };
+      if (!isOAuthUser) payload.old_password = oldPwd;
+      await api.post('/account/password.php', payload);
+      setOk(isOAuthUser ? '密码已设置' : '密码已修改');
       setOldPwd('');
       setNewPwd('');
       setConfirmPwd('');
@@ -748,11 +757,26 @@ function SecuritySection() {
       <SectionCard title="安全" desc="保护你的账户安全">
         {err && <Alert kind="error">{err}</Alert>}
         {ok && <Alert kind="success">{ok}</Alert>}
-        <form onSubmit={handleSubmit}>
-          <div className="mb-5">
-            <FieldLabel required>当前密码</FieldLabel>
-            <PasswordInput value={oldPwd} onChange={setOldPwd} show={showOld} onToggle={() => setShowOld(!showOld)} disabled={saving} placeholder="输入当前密码" />
+        {isOAuthUser && (
+          <div
+            className="flex items-start gap-2 p-3 rounded-md text-sm mb-4"
+            style={{
+              background: 'rgba(68, 118, 213, 0.08)',
+              border: '1px solid rgba(68, 118, 213, 0.2)',
+              color: 'var(--accent-blue)',
+            }}
+          >
+            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+            <span>你的账户通过 GitHub 注册，尚未设置密码。请直接设置新密码以启用密码登录。</span>
           </div>
+        )}
+        <form onSubmit={handleSubmit}>
+          {!isOAuthUser && (
+            <div className="mb-5">
+              <FieldLabel required>当前密码</FieldLabel>
+              <PasswordInput value={oldPwd} onChange={setOldPwd} show={showOld} onToggle={() => setShowOld(!showOld)} disabled={saving} placeholder="输入当前密码" />
+            </div>
+          )}
           <div className="grid gap-5" style={{ gridTemplateColumns: '1fr 1fr' }}>
             <div>
               <FieldLabel required>新密码</FieldLabel>
@@ -784,7 +808,7 @@ function SecuritySection() {
           </div>
 
           <ActionRow>
-            <SaveButton loading={saving}>保存安全设置</SaveButton>
+            <SaveButton loading={saving}>{isOAuthUser ? '设置密码' : '保存安全设置'}</SaveButton>
           </ActionRow>
         </form>
       </SectionCard>
@@ -1212,7 +1236,7 @@ function NotificationsPrefSection({ profile }: { profile: SettingsData | null })
 
 // ============== 删除账号 Section ==============
 
-function DeleteAccountSection() {
+function DeleteAccountSection({ profile }: { profile: SettingsData | null }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
@@ -1220,10 +1244,13 @@ function DeleteAccountSection() {
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // GitHub-only 用户（未启用密码）无需输入密码
+  const hasPassword = !!profile?.password_enabled;
+
   const handleDelete = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
-    if (!password) {
+    if (hasPassword && !password) {
       setErr('请输入你的密码以确认');
       return;
     }
@@ -1233,15 +1260,16 @@ function DeleteAccountSection() {
     }
     setDeleting(true);
     try {
-      await api.delete('/account/settings.php', {
-        // 部分后端 DELETE 不支持 body，这里同时传 query
-      });
-      // 后端可能要求密码校验，尝试 POST 等价端点
       await api.post('/account/delete.php', { password });
-      // 退出登录
-      window.location.href = '/account.html#/account/sign-in';
+      // 注销成功：清除本地 token 并跳转到登录页
+      // 后端已撤销所有 refresh_token 并将账号标记为 deleted
+      localStorage.removeItem('air_access_token');
+      localStorage.removeItem('air_refresh_token');
+      localStorage.removeItem('air_user');
+      // 跳转到登录页（带提示）
+      window.location.href = '/account.html#/account/sign-in?reason=account_deleted';
     } catch (e2) {
-      setErr(e2 instanceof ApiError ? e2.message : '删除账户失败');
+      setErr(e2 instanceof ApiError ? e2.message : '注销账户失败');
     } finally {
       setDeleting(false);
     }
@@ -1253,7 +1281,7 @@ function DeleteAccountSection() {
       {!confirmOpen ? (
         <div className="flex items-center justify-between gap-6 flex-wrap">
           <p className="text-sm flex-1 min-w-[240px]" style={{ color: 'var(--muted-foreground)', lineHeight: 1.6 }}>
-            注销后，你的所有数据和资源将被永久删除，此操作不可撤销。包括你上传的资源、论坛帖子以及所有的关注关系都将被清除。
+            注销后，你的账号将被标记为已注销，用户名将变为"已注销账号-编号"，头像将变为默认灰色头像。你上传的资源、论坛帖子将被保留（显示为已注销账号发布），但所有关注关系和登录凭证将被清除。此操作不可撤销。
           </p>
           <button
             type="button"
@@ -1270,13 +1298,21 @@ function DeleteAccountSection() {
           <div className="text-sm font-semibold mb-2" style={{ color: 'var(--destructive)' }}>
             最终确认
           </div>
-          <p className="text-[13px] mb-4" style={{ color: 'var(--muted-foreground)' }}>
-            请输入你的账户密码，并在下方输入 <code style={{ background: 'var(--muted)', padding: '2px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)' }}>删除我的账户</code> 以确认。
-          </p>
-          <div className="mb-4">
-            <FieldLabel required>密码</FieldLabel>
-            <PasswordInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} placeholder="输入你的密码" />
-          </div>
+          {hasPassword ? (
+            <p className="text-[13px] mb-4" style={{ color: 'var(--muted-foreground)' }}>
+              请输入你的账户密码，并在下方输入 <code style={{ background: 'var(--muted)', padding: '2px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)' }}>删除我的账户</code> 以确认。
+            </p>
+          ) : (
+            <p className="text-[13px] mb-4" style={{ color: 'var(--muted-foreground)' }}>
+              你使用 GitHub 登录，无需输入密码。请在下方输入 <code style={{ background: 'var(--muted)', padding: '2px 6px', borderRadius: 4, fontFamily: 'var(--font-mono)' }}>删除我的账户</code> 以确认注销。
+            </p>
+          )}
+          {hasPassword && (
+            <div className="mb-4">
+              <FieldLabel required>密码</FieldLabel>
+              <PasswordInput value={password} onChange={setPassword} show={showPwd} onToggle={() => setShowPwd(!showPwd)} placeholder="输入你的密码" />
+            </div>
+          )}
           <div className="mb-5">
             <FieldLabel required>确认文本</FieldLabel>
             <TextInput

@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Calendar,
   UserCheck,
+  Shield,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,6 +34,32 @@ interface ProfileResource {
   created_at: string;
 }
 
+interface ProfileTopic {
+  id: string;
+  title: string;
+  category?: string;
+  views_count?: number;
+  replies_count?: number;
+  created_at: string;
+}
+
+interface ProfileArticle {
+  id: string;
+  title: string;
+  views_count?: number;
+  comments_count?: number;
+  created_at: string;
+}
+
+interface ProfileQuestion {
+  id: string;
+  title: string;
+  status?: string;
+  views_count?: number;
+  answers_count?: number;
+  created_at: string;
+}
+
 interface ProfileData {
   user: {
     id: string;
@@ -41,6 +68,7 @@ interface ProfileData {
     bio: string | null;
     github_username: string | null;
     bilibili_username: string | null;
+    is_admin?: boolean;
     created_at: string;
   };
   stats: {
@@ -48,8 +76,16 @@ interface ProfileData {
     total_downloads: number;
     forum_posts_count: number;
     total_likes: number;
+    topics_count?: number;
+    articles_count?: number;
+    questions_count?: number;
+    favorites_count?: number;
   };
   recent_resources: ProfileResource[];
+  recent_topics?: ProfileTopic[];
+  recent_articles?: ProfileArticle[];
+  recent_questions?: ProfileQuestion[];
+  favorite_resources?: ProfileResource[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -200,14 +236,14 @@ export default function ProfilePage() {
   }
 
   if (!data) return null;
-  const { user, stats, recent_resources } = data;
+  const { user, stats, recent_resources = [], recent_topics = [], recent_articles = [], recent_questions = [], favorite_resources = [] } = data;
 
   const tabs: { key: TabKey; label: string; icon: typeof Package; count: number }[] = [
     { key: 'resources', label: '资源', icon: Package, count: stats.resources_count },
-    { key: 'topics', label: '帖子', icon: MessageCircle, count: 0 },
-    { key: 'articles', label: '文章', icon: PenLine, count: 0 },
-    { key: 'questions', label: '问答', icon: HelpCircle, count: 0 },
-    { key: 'favorites', label: '收藏', icon: Bookmark, count: 0 },
+    { key: 'topics', label: '帖子', icon: MessageCircle, count: stats.topics_count ?? 0 },
+    { key: 'articles', label: '文章', icon: PenLine, count: stats.articles_count ?? 0 },
+    { key: 'questions', label: '问答', icon: HelpCircle, count: stats.questions_count ?? 0 },
+    { key: 'favorites', label: '收藏', icon: Bookmark, count: stats.favorites_count ?? favorite_resources.length },
   ];
 
   return (
@@ -257,8 +293,14 @@ export default function ProfilePage() {
             borderRadius: '50%',
             border: '5px solid var(--background)',
             boxShadow: 'var(--shadow-md)',
-            background: 'var(--accent-blue)',
-            color: 'var(--accent-blue-foreground)',
+            // 已注销账号使用灰色头像
+            background: /^已注销账号-\d+$/.test(user.username || '')
+              ? 'linear-gradient(135deg, #9ca3af, #6b7280)'
+              : 'var(--accent-blue)',
+            color: /^已注销账号-\d+$/.test(user.username || '')
+              ? '#f3f4f6'
+              : 'var(--accent-blue-foreground)',
+            filter: /^已注销账号-\d+$/.test(user.username || '') ? 'grayscale(1)' : undefined,
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -267,7 +309,7 @@ export default function ProfilePage() {
             overflow: 'hidden',
           }}
         >
-          {user.avatar_url ? (
+          {user.avatar_url && !/^已注销账号-\d+$/.test(user.username || '') ? (
             <img src={user.avatar_url} alt={user.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
             getInitials(user.username)
@@ -293,7 +335,7 @@ export default function ProfilePage() {
                 {user.username}
               </h1>
               <span
-                className="badge badge-blue"
+                className={user.is_admin ? 'badge badge-orange' : 'badge badge-blue'}
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -302,12 +344,14 @@ export default function ProfilePage() {
                   borderRadius: 999,
                   fontSize: 11,
                   fontWeight: 600,
-                  background: 'var(--accent-blue)',
-                  color: 'var(--accent-blue-foreground)',
+                  background: user.is_admin
+                    ? 'linear-gradient(135deg, #f59e0b, #ef4444)'
+                    : 'var(--accent-blue)',
+                  color: '#fff',
                 }}
               >
-                <UserCheck size={12} strokeWidth={2.5} />
-                用户
+                {user.is_admin ? <Shield size={12} strokeWidth={2.5} /> : <UserCheck size={12} strokeWidth={2.5} />}
+                {user.is_admin ? '管理员' : '用户'}
               </span>
             </div>
             <div
@@ -543,23 +587,29 @@ export default function ProfilePage() {
         {activeTab === 'resources' && (
           <ResourceGrid resources={recent_resources} />
         )}
-        {activeTab !== 'resources' && (
-          <div
-            className="empty-state"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '48px 24px',
-              textAlign: 'center',
-              gap: 12,
-            }}
-          >
-            <Package size={40} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} />
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>暂无内容</div>
-            <div style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>该用户还没有发布过相关内容</div>
-          </div>
+        {activeTab === 'topics' && (
+          <ForumList
+            items={recent_topics}
+            emptyText="该用户还没有发布过帖子"
+            type="topic"
+          />
+        )}
+        {activeTab === 'articles' && (
+          <ForumList
+            items={recent_articles}
+            emptyText="该用户还没有发布过文章"
+            type="article"
+          />
+        )}
+        {activeTab === 'questions' && (
+          <ForumList
+            items={recent_questions}
+            emptyText="该用户还没有发布过问答"
+            type="question"
+          />
+        )}
+        {activeTab === 'favorites' && (
+          <ResourceGrid resources={favorite_resources} emptyIcon="bookmark" emptyTitle="暂无收藏" emptyDesc="该用户还没有收藏过内容" />
         )}
       </div>
 
@@ -571,8 +621,9 @@ export default function ProfilePage() {
   );
 }
 
-function ResourceGrid({ resources }: { resources: ProfileResource[] }) {
+function ResourceGrid({ resources, emptyIcon, emptyTitle, emptyDesc }: { resources: ProfileResource[]; emptyIcon?: 'package' | 'bookmark'; emptyTitle?: string; emptyDesc?: string }) {
   if (!resources || resources.length === 0) {
+    const icon = emptyIcon === 'bookmark' ? <Bookmark size={40} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} /> : <Package size={40} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} />;
     return (
       <div
         className="empty-state"
@@ -586,9 +637,9 @@ function ResourceGrid({ resources }: { resources: ProfileResource[] }) {
           gap: 12,
         }}
       >
-        <Package size={40} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} />
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>暂无资源</div>
-        <div style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>该用户还没有发布过资源</div>
+        {icon}
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>{emptyTitle || '暂无资源'}</div>
+        <div style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>{emptyDesc || '该用户还没有发布过资源'}</div>
       </div>
     );
   }
@@ -603,10 +654,11 @@ function ResourceGrid({ resources }: { resources: ProfileResource[] }) {
     >
       {resources.map((r) => {
         const color = TYPE_THUMB_COLOR[r.type] || '';
+        const href = `/resources.html#/resources/detail?slug=${encodeURIComponent(r.slug)}`;
         return (
-          <Link
+          <a
             key={r.id}
-            to={`/resources/detail?slug=${encodeURIComponent(r.slug)}`}
+            href={href}
             className="resource-card"
             style={{
               display: 'flex',
@@ -691,7 +743,114 @@ function ResourceGrid({ resources }: { resources: ProfileResource[] }) {
               </span>
               <span>{formatRelative(r.created_at)}更新</span>
             </div>
-          </Link>
+          </a>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ForumListProps {
+  items: Array<{ id: string; title: string; category?: string; views_count?: number; replies_count?: number; comments_count?: number; answers_count?: number; status?: string; created_at: string }>;
+  emptyText: string;
+  type: 'topic' | 'article' | 'question';
+}
+
+function ForumList({ items, emptyText, type }: ForumListProps) {
+  if (!items || items.length === 0) {
+    return (
+      <div
+        className="empty-state"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '48px 24px',
+          textAlign: 'center',
+          gap: 12,
+        }}
+      >
+        <Package size={40} style={{ color: 'var(--muted-foreground)', opacity: 0.5 }} />
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--foreground)' }}>暂无内容</div>
+        <div style={{ fontSize: 14, color: 'var(--muted-foreground)' }}>{emptyText}</div>
+      </div>
+    );
+  }
+  const icon = type === 'topic' ? <MessageCircle size={18} /> : type === 'article' ? <PenLine size={18} /> : <HelpCircle size={18} />;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {items.map((it) => {
+        const href = `/forum.html#/forum/${type}?id=${encodeURIComponent(it.id)}`;
+        const secondary = type === 'topic'
+          ? `${it.replies_count ?? 0} 回复 · ${it.views_count ?? 0} 浏览`
+          : type === 'article'
+          ? `${it.comments_count ?? 0} 评论 · ${it.views_count ?? 0} 浏览`
+          : `${it.answers_count ?? 0} 回答 · ${it.views_count ?? 0} 浏览`;
+        const badge = type === 'topic' && it.category
+          ? it.category
+          : type === 'question' && it.status
+          ? (it.status === 'open' ? '待解答' : it.status === 'resolved' ? '已解决' : it.status === 'closed' ? '已关闭' : it.status)
+          : null;
+        return (
+          <a
+            key={it.id}
+            href={href}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '14px 18px',
+              background: 'var(--card)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow-sm)',
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'box-shadow 0.16s ease, border-color 0.16s ease',
+            }}
+          >
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--accent-blue-soft)',
+                color: 'var(--accent-blue)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              {icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--foreground)', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {it.title}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, color: 'var(--muted-foreground)' }}>
+                {secondary} · {formatRelative(it.created_at)}
+              </div>
+            </div>
+            {badge && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  padding: '4px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--muted)',
+                  color: 'var(--muted-foreground)',
+                  fontSize: 12,
+                  fontWeight: 500,
+                  flexShrink: 0,
+                }}
+              >
+                {badge}
+              </span>
+            )}
+          </a>
         );
       })}
     </div>
