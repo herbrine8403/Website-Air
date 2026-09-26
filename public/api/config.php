@@ -1,29 +1,38 @@
 <?php
-// MySQL 数据库连接配置（InfinityFree 免费版不支持环境变量，直接内置）
-define('DB_HOST', 'sql301.infinityfree.com');
-define('DB_NAME', 'REMOVED_DB_NAME');
-define('DB_USER', 'REMOVED_DB_USER');
-define('DB_PASS', 'REMOVED_DB_PASS');
+// 敏感凭据统一放在同目录的 credentials.php（已加入 .gitignore，绝不入库）。
+// 仓库中只保留 credentials.example.php 模板，部署时需手动上传 credentials.php。
+$__credentialsFile = __DIR__ . '/credentials.php';
+if (!is_file($__credentialsFile)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Missing credentials.php']);
+    exit;
+}
+$__credentials = require $__credentialsFile;
+
+// MySQL 数据库连接配置
+define('DB_HOST', $__credentials['DB_HOST'] ?? '');
+define('DB_NAME', $__credentials['DB_NAME'] ?? '');
+define('DB_USER', $__credentials['DB_USER'] ?? '');
+define('DB_PASS', $__credentials['DB_PASS'] ?? '');
 
 // 公告系统基础 URL（用于设备型号映射等）
 define('BASE_URL', 'https://newamethyst.ct.ws');
 
-// JWT 配置（InfinityFree 免费版不支持环境变量，直接内置）
-define('JWT_SECRET', 'REMOVED_JWT_SECRET');
+// JWT 配置
+define('JWT_SECRET', $__credentials['JWT_SECRET'] ?? '');
 define('JWT_ACCESS_TTL', 7200);   // 2 小时
 define('JWT_REFRESH_TTL', 2592000); // 30 天
 define('JWT_ALG', 'HS256');
 
-// GitHub OAuth（InfinityFree 免费版不支持环境变量，直接内置）
+// GitHub OAuth
 define('GITHUB_CLIENT_ID', 'Ov23ctExKxAIGEjm97mv');
-define('GITHUB_CLIENT_SECRET', 'REMOVED_GITHUB_CLIENT_SECRET');
+define('GITHUB_CLIENT_SECRET', $__credentials['GITHUB_CLIENT_SECRET'] ?? '');
 define('GITHUB_REDIRECT_URI', 'https://newamethyst.ct.ws/api/auth/github-callback.php');
 
 // 火山引擎 TOS 对象存储配置（用于 Air 官方下载源直传/直下）
-// 注意：InfinityFree 不支持环境变量，所以直接内置
-// 如需更换 bucket 或区域，修改以下常量即可
-define('TOS_ACCESS_KEY', 'REMOVED_TOS_ACCESS_KEY');
-define('TOS_SECRET_KEY', 'REMOVED_TOS_SECRET_KEY');
+// 如需更换 bucket 或区域，修改 credentials.php 即可
+define('TOS_ACCESS_KEY', $__credentials['TOS_ACCESS_KEY'] ?? '');
+define('TOS_SECRET_KEY', $__credentials['TOS_SECRET_KEY'] ?? '');
 define('TOS_ENDPOINT', 'tos-cn-beijing.volces.com');
 define('TOS_BUCKET', 'air-resources');
 define('TOS_REGION', 'cn-beijing');

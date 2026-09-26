@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 
+# Secrets — 敏感凭据，绝不入库
+public/api/credentials.php
+.env
+.env.*
+
+# 本地调试产物 / 部署脚本，不入库
+temp/
+.design/
+upload*.ps1
+upload.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
