@@ -81,6 +81,8 @@ try {
     }
 
     // 创建 resource_files 记录
+    // 注意：file_size 列允许 NULL，但 bind_param 'i' 类型在 PHP 8.1+ 不允许 null
+    // 解决方案：file_size 不存在时默认为 0（语义：0 表示未知大小，与 NULL 等价）
     $f_stmt = $db->prepare('INSERT INTO resource_files (version_id, source_type, source_url, file_path, file_size, file_name, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())');
     foreach ($files as $file) {
         if (!isset($file['source_type'])) {
@@ -88,9 +90,16 @@ try {
         }
         $f_source_type = (string)$file['source_type'];
         $f_source_url = isset($file['source_url']) ? (string)$file['source_url'] : null;
-        // 对于 source_type='air'，跳过 file_path（暂留空）
-        $f_file_path = null;
-        $f_file_size = isset($file['file_size']) ? (int)$file['file_size'] : null;
+        // Air 官网下载源使用 file_path（TOS 对象 key），其他源使用 source_url
+        if ($f_source_type === 'air') {
+            $f_file_path = isset($file['file_path']) ? (string)$file['file_path'] : null;
+            // 如果只传了 file_name 没传 file_path，可以后续补充
+        } else {
+            $f_file_path = null;
+        }
+        // file_size 兼容 null：默认 0
+        $f_file_size_raw = isset($file['file_size']) ? $file['file_size'] : 0;
+        $f_file_size = is_numeric($f_file_size_raw) ? (int)$f_file_size_raw : 0;
         $f_file_name = isset($file['file_name']) ? (string)$file['file_name'] : null;
         $f_stmt->bind_param('isssis', $version_id, $f_source_type, $f_source_url, $f_file_path, $f_file_size, $f_file_name);
         $f_stmt->execute();

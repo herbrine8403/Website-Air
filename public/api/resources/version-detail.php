@@ -9,9 +9,15 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 
 $db = getDBConnection();
 
-$version_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+// 兼容 ?version_id=xxx 和 ?id=xxx
+$version_id = 0;
+if (isset($_GET['version_id'])) {
+    $version_id = intval($_GET['version_id']);
+} elseif (isset($_GET['id'])) {
+    $version_id = intval($_GET['id']);
+}
 if ($version_id <= 0) {
-    json_response(['success' => false, 'error' => '缺少 id 参数'], 400);
+    json_response(['success' => false, 'error' => '缺少 version_id 参数'], 400);
 }
 
 // 查询版本
