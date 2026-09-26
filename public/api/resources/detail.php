@@ -79,14 +79,18 @@ while ($row = $res->fetch_assoc()) {
 }
 $stmt->close();
 
-// 获取最新版本
+// 获取所有版本（前端"版本"Tab 直接使用，无需额外请求 versions.php）
+// 同时取最新版本作为 latest_version（兼容旧前端逻辑）
 $latest_version = null;
+$versions = [];
+
 $stmt = $db->prepare('SELECT id, version_number, version_type, changelog, downloads_count, created_at '
-    . 'FROM resource_versions WHERE resource_id = ? ORDER BY created_at DESC LIMIT 1');
+    . 'FROM resource_versions WHERE resource_id = ? ORDER BY created_at DESC');
 $stmt->bind_param('i', $resource_id);
 $stmt->execute();
 $res = $stmt->get_result();
-if ($version_row = $res->fetch_assoc()) {
+$is_first = true;
+while ($version_row = $res->fetch_assoc()) {
     $version_id = (int)$version_row['id'];
 
     // 版本的 loaders
@@ -131,7 +135,7 @@ if ($version_row = $res->fetch_assoc()) {
     }
     $f_stmt->close();
 
-    $latest_version = [
+    $version_data = [
         'id' => (string)$version_row['id'],
         'version_number' => $version_row['version_number'],
         'version_type' => $version_row['version_type'],
@@ -141,7 +145,29 @@ if ($version_row = $res->fetch_assoc()) {
         'loaders' => $loaders,
         'mc_versions' => $mc_versions,
         'files' => $files,
+        'is_latest' => $is_first,
     ];
+
+    if ($is_first) {
+        $latest_version = $version_data;
+        $is_first = false;
+    }
+
+    $versions[] = $version_data;
+}
+$stmt->close();
+
+// 计算评分分布（5/4/3/2/1 各占多少条），供前端 RatingBlock 直接展示
+$rating_distribution = ['5' => 0, '4' => 0, '3' => 0, '2' => 0, '1' => 0];
+$stmt = $db->prepare('SELECT rating, COUNT(*) AS cnt FROM resource_comments WHERE resource_id = ? AND rating > 0 GROUP BY rating');
+$stmt->bind_param('i', $resource_id);
+$stmt->execute();
+$dist_res = $stmt->get_result();
+while ($dist_row = $dist_res->fetch_assoc()) {
+    $star = (int)$dist_row['rating'];
+    if (isset($rating_distribution[(string)$star])) {
+        $rating_distribution[(string)$star] = (int)$dist_row['cnt'];
+    }
 }
 $stmt->close();
 
@@ -187,6 +213,8 @@ json_response([
         'gallery' => $gallery,
         'dependencies' => $dependencies,
         'latest_version' => $latest_version,
+        'versions' => $versions,
+        'rating_distribution' => $rating_distribution,
         'is_following' => $is_following,
     ],
 ]);
