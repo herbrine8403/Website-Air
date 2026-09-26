@@ -129,25 +129,51 @@ export function getSourceMeta(source: string | undefined | null): SourceMeta | n
   return null;
 }
 
+/** 资源作者对象（后端新格式） */
+export interface ResourceAuthor {
+  id?: string | number;
+  username?: string;
+  avatar_url?: string | null;
+}
+
+/** 资源标签对象（后端新格式：{ type, value }） */
+export interface ResourceTag {
+  type?: string;
+  value: string;
+}
+
 /** 通用资源接口 */
 export interface Resource {
   id: string | number;
-  name: string;
+  /** 后端新字段：title（优先使用） */
+  title?: string;
+  /** 旧字段：name（向后兼容） */
+  name?: string;
   slug?: string;
   type?: string;
   category?: string;
-  author?: string;
+  /** 后端新格式为对象，旧格式为字符串 */
+  author?: ResourceAuthor | string | null;
   author_username?: string;
   description?: string;
   summary?: string;
-  tags?: string[];
+  /** 后端新格式为 { type, value } 对象数组，旧格式为 string[] */
+  tags?: string[] | ResourceTag[];
+  /** 后端新字段 */
+  cover_image?: string | null;
   cover_url?: string | null;
   thumbnail_url?: string | null;
   icon_url?: string | null;
+  /** 后端新字段 */
+  downloads_count?: number;
   downloads?: number;
   download_count?: number;
+  /** 后端新字段 */
+  followers_count?: number;
   follows?: number;
   follow_count?: number;
+  /** 后端新字段 */
+  rating_avg?: number;
   rating?: number;
   rating_average?: number;
   rating_count?: number;
@@ -157,7 +183,142 @@ export interface Resource {
   status?: string;
   source?: string;
   sources?: string[];
-  latest_version?: string;
+  // 后端 detail.php 返回的 latest_version 是一个版本对象（不是字符串）
+  latest_version?: {
+    id?: string | number;
+    version_number?: string;
+    version_type?: string;
+    changelog?: string;
+    downloads_count?: number;
+    created_at?: string;
+    loaders?: string[];
+    mc_versions?: string[];
+    files?: any[];
+  };
+}
+
+/** 从 resource.author 提取作者名称（兼容 string 和 object 两种格式） */
+export function getAuthorName(resource: Pick<Resource, 'author' | 'author_username'>): string {
+  const { author, author_username } = resource;
+  if (typeof author === 'object' && author !== null) {
+    return author.username || author_username || '匿名';
+  }
+  return (author as string | undefined) || author_username || '匿名';
+}
+
+/** 已注销账号用户名前缀 */
+export const DEACTIVATED_PREFIX = '已注销账号-';
+
+/** 正则匹配已注销账号用户名（已注销账号-{数字}） */
+const DEACTIVATED_RE = /^已注销账号-\d+$/;
+
+/** 检测用户名是否属于已注销账号 */
+export function isDeactivatedUsername(username: string | undefined | null): boolean {
+  if (!username) return false;
+  return DEACTIVATED_RE.test(username);
+}
+
+/** 检测资源作者是否已注销（author 为对象时检查 username，为字符串时直接检查） */
+export function isDeactivatedAuthor(resource: Pick<Resource, 'author' | 'author_username'>): boolean {
+  const { author, author_username } = resource;
+  if (typeof author === 'object' && author !== null) {
+    return isDeactivatedUsername(author.username);
+  }
+  return isDeactivatedUsername((author as string | undefined) || author_username);
+}
+
+/** 已注销账号的灰色头像背景色（CSS） */
+export const DEACTIVATED_AVATAR_STYLE: React.CSSProperties = {
+  background: 'linear-gradient(135deg, #9ca3af, #6b7280)',
+  color: '#f3f4f6',
+  filter: 'grayscale(1)',
+};
+
+/** 获取作者头像 URL（author 为对象时取出 avatar_url） */
+export function getAuthorAvatar(resource: Pick<Resource, 'author'>): string | undefined {
+  const { author } = resource;
+  if (typeof author === 'object' && author !== null) {
+    return author.avatar_url ?? undefined;
+  }
+  return undefined;
+}
+
+/** 获取作者 ID（author 为对象时取出 id） */
+export function getAuthorId(resource: Pick<Resource, 'author'>): string | number | undefined {
+  const { author } = resource;
+  if (typeof author === 'object' && author !== null) {
+    return author.id;
+  }
+  return undefined;
+}
+
+/** 将 tags 归一化为 string[]（兼容 string[] 和 { type, value }[] 两种格式） */
+export function getTagStrings(tags: Resource['tags']): string[] {
+  if (!tags) return [];
+  // 防御性检查：确保 tags 是数组
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .map((t) => (typeof t === 'string' ? t : t?.value))
+    .filter((t): t is string => typeof t === 'string' && t.length > 0);
+}
+
+/** 将 gallery 归一化为 string[]（兼容 string[] 和 { image_url, caption }[] 两种格式） */
+export function getGalleryUrls(gallery: unknown): string[] {
+  if (!Array.isArray(gallery)) return [];
+  return gallery
+    .map((g) => {
+      if (typeof g === 'string') return g;
+      if (g && typeof g === 'object') {
+        const obj = g as { image_url?: string; url?: string };
+        return obj.image_url || obj.url || '';
+      }
+      return '';
+    })
+    .filter((u): u is string => typeof u === 'string' && u.length > 0);
+}
+
+/** 将 dependencies 归一化为统一格式（兼容 { name, version } 和 { dep_name, dep_version } 两种格式） */
+export interface NormalizedDependency {
+  name: string;
+  version?: string;
+  type?: string;
+  url?: string;
+}
+
+export function getDependencies(deps: unknown): NormalizedDependency[] {
+  if (!Array.isArray(deps)) return [];
+  return deps
+    .map((d): NormalizedDependency | null => {
+      if (!d || typeof d !== 'object') return null;
+      const obj = d as Record<string, unknown>;
+      const name = String(obj.name ?? obj.dep_name ?? '');
+      const version = obj.version ?? obj.dep_version;
+      const type = obj.type ?? obj.dep_type;
+      const url = obj.url ?? obj.dep_url;
+      return {
+        name,
+        ...(typeof version === 'string' ? { version } : {}),
+        ...(typeof type === 'string' ? { type } : {}),
+        ...(typeof url === 'string' ? { url } : {}),
+      };
+    })
+    .filter((d): d is NormalizedDependency => d !== null && d.name.length > 0);
+}
+
+/** 将 loaders 归一化为 string[]（防御性检查） */
+export function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
+}
+
+/** 获取封面图 URL（优先使用新字段 cover_image） */
+export function getCoverUrl(resource: Pick<Resource, 'cover_image' | 'cover_url' | 'thumbnail_url' | 'icon_url'>): string | undefined {
+  return resource.cover_image || resource.cover_url || resource.thumbnail_url || resource.icon_url || undefined;
+}
+
+/** 获取资源标题（优先 title，回退 name） */
+export function getResourceTitle(resource: Pick<Resource, 'title' | 'name'>): string {
+  return resource.title || resource.name || '';
 }
 
 /** 资源列表响应 */
@@ -201,14 +362,27 @@ export interface VersionItem {
   version_type?: string;
   loaders?: string[];
   game_versions?: string[];
+  mc_versions?: string[]; // 后端实际返回字段
   changelog?: string;
   file_size?: string;
   size?: string;
   downloads?: number;
   download_count?: number;
+  downloads_count?: number; // 后端实际返回字段
   created_at?: string;
   published_at?: string;
   updated_at?: string;
+  // 后端返回 files 数组，前端历史代码用 sources
+  files?: Array<{
+    id?: string | number;
+    source_type?: string;
+    source_url?: string;
+    file_path?: string;
+    file_name?: string;
+    file_size?: number | string;
+    downloads_count?: number;
+    created_at?: string;
+  }>;
   sources?: Array<{
     source: string;
     url?: string;
@@ -226,7 +400,7 @@ export interface VersionItem {
 
 export interface VersionsResponse {
   success: boolean;
-  resource?: { id: string | number; name: string; slug?: string; type?: string };
+  resource?: { id: string | number; name?: string; title?: string; slug?: string; type?: string };
   versions?: VersionItem[];
   total?: number;
 }
@@ -234,7 +408,7 @@ export interface VersionsResponse {
 export interface VersionDetailResponse {
   success: boolean;
   version?: VersionItem;
-  resource?: { id: string | number; name: string; slug?: string; type?: string };
+  resource?: { id: string | number; name?: string; title?: string; slug?: string; type?: string };
 }
 
 /** 资源卡片组件（用于网格/列表展示） */
@@ -247,11 +421,12 @@ export function ResourceCard({ resource, variant = 'grid' }: ResourceCardProps) 
   const meta = getTypeMeta(resource.type);
   const Icon = meta.icon;
   const slug = resource.slug || resource.id;
-  const tags = (resource.tags ?? []).slice(0, 3);
-  const downloads = resource.downloads ?? resource.download_count ?? 0;
-  const rating = resource.rating ?? resource.rating_average ?? 0;
-  const author = resource.author || resource.author_username || '匿名';
-  const cover = resource.cover_url || resource.thumbnail_url || resource.icon_url;
+  const tags = getTagStrings(resource.tags).slice(0, 3);
+  const downloads = resource.downloads_count ?? resource.downloads ?? resource.download_count ?? 0;
+  const rating = resource.rating_avg ?? resource.rating ?? resource.rating_average ?? 0;
+  const authorName = getAuthorName(resource);
+  const cover = getCoverUrl(resource);
+  const title = getResourceTitle(resource);
   const detailHref = `/resources/detail?slug=${encodeURIComponent(String(slug))}`;
 
   if (variant === 'compact') {
@@ -278,7 +453,7 @@ export function ResourceCard({ resource, variant = 'grid' }: ResourceCardProps) 
             className="font-semibold truncate"
             style={{ color: 'var(--foreground)', fontSize: 13 }}
           >
-            {resource.name}
+            {title}
           </div>
           <div className="text-xs truncate" style={{ color: 'var(--muted-foreground)' }}>
             {formatNumber(downloads)} 下载 · {rating > 0 ? `${rating.toFixed(1)} 星` : '暂无评分'}
@@ -304,7 +479,7 @@ export function ResourceCard({ resource, variant = 'grid' }: ResourceCardProps) 
         }}
       >
         {cover ? (
-          <img src={cover} alt={resource.name} loading="lazy" className="w-full h-full object-cover" />
+          <img src={cover} alt={title} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <Icon size={48} strokeWidth={1.5} />
         )}
@@ -321,16 +496,16 @@ export function ResourceCard({ resource, variant = 'grid' }: ResourceCardProps) 
         <div
           className="font-semibold truncate"
           style={{ color: 'var(--foreground)', fontSize: 15 }}
-          title={resource.name}
+          title={title}
         >
-          {resource.name}
+          {title}
         </div>
         <div
           className="inline-flex items-center gap-1 text-xs"
           style={{ color: 'var(--muted-foreground)' }}
         >
           <User size={12} />
-          <span>by {author}</span>
+          <span>by {authorName}</span>
         </div>
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
