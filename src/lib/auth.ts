@@ -36,8 +36,10 @@ export function getRefreshToken(): string | null {
 
 export function setTokens(access: string, refresh: string): void {
   // access token 存 cookie（2小时），refresh token 存 cookie（30天）+ localStorage 兜底
-  Cookies.set(ACCESS_TOKEN_KEY, access, { expires: 1/12, sameSite: 'lax' });
-  Cookies.set(REFRESH_TOKEN_KEY, refresh, { expires: 30, sameSite: 'lax' });
+  // secure: true —— 网站使用 HTTPS，Cookie 应该只在 HTTPS 连接下发送
+  // sameSite: 'lax' —— 允许跨站请求发送 Cookie（用于 OAuth 回调等场景）
+  Cookies.set(ACCESS_TOKEN_KEY, access, { expires: 1/12, sameSite: 'lax', secure: true });
+  Cookies.set(REFRESH_TOKEN_KEY, refresh, { expires: 30, sameSite: 'lax', secure: true });
   localStorage.setItem(ACCESS_TOKEN_KEY, access);
   localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
 }

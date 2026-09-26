@@ -49,7 +49,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const token = getAccessToken();
     if (!token) return null;
     try {
-      const data = await api.get<{ success: boolean; user: AuthUser }>('/auth/me.php', { auth: true });
+      // noRedirect: true —— 避免 OAuth 回调页面在 fetchMe 失败时自动跳转到登录页
+      // （由调用方自行决定如何处理 401 错误）
+      const data = await api.get<{ success: boolean; user: AuthUser }>('/auth/me.php', { auth: true, noRedirect: true });
       return data.user;
     } catch {
       return null;

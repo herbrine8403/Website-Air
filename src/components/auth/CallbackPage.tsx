@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Loader2, Mail, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { api } from '@/lib/api';
+import { setTokens, getAccessToken, decodeJwt } from '@/lib/auth';
 
 type CallbackState =
   | { kind: 'loading' }
@@ -29,15 +30,35 @@ function CallbackInner() {
     const githubUsername = getParam('github_username') || undefined;
 
     if (token) {
+      // 先手动保存 token（确保 Cookie 和 localStorage 都有值）
+      // 然后再调用 login()，login() 内部会调用 fetchMe() 验证 token 是否有效
+      setTokens(token, refreshToken || '');
+
+      // 验证 token 是否有效（解码 JWT 检查是否过期）
+      const payload = decodeJwt(token);
+      if (!payload || (payload.exp && Date.now() >= payload.exp * 1000)) {
+        setState({ kind: 'error', message: '登录凭证已过期，请重新登录' });
+        return;
+      }
+
       login(token, refreshToken || '')
         .then(() => {
+          // 验证 login() 是否成功保存了 token
+          const savedToken = getAccessToken();
+          if (!savedToken) {
+            setState({ kind: 'error', message: '登录凭证保存失败，请重试' });
+            return;
+          }
           setState({ kind: 'success' });
           setTimeout(() => {
             window.location.href = '/account.html#/account/dashboard';
           }, 300);
         })
         .catch(() => {
-          setState({ kind: 'error', message: '登录失败，请重试' });
+          // login() 失败可能是因为 fetchMe() 返回 401
+          // 但 token 已经保存了，所以不要显示错误，而是跳转到 dashboard 让 useAuth 自行处理
+          // 或者显示一个更友好的错误信息
+          setState({ kind: 'error', message: '登录验证失败，请重试或联系管理员' });
         });
       return;
     }
