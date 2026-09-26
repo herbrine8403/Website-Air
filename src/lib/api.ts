@@ -5,6 +5,7 @@ const API_BASE = '/api';
 export interface ApiOptions extends RequestInit {
   json?: unknown; // 如果提供，作为 JSON body 发送
   auth?: boolean; // 是否需要认证，默认 true
+  noRedirect?: boolean; // 是否禁用 401 自动跳转登录页（用于 OAuth 回调等场景）
 }
 
 export class ApiError extends Error {
@@ -48,7 +49,7 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 export async function apiFetch<T = unknown>(path: string, options: ApiOptions = {}): Promise<T> {
-  const { json, auth = true, headers = {}, ...rest } = options;
+  const { json, auth = true, noRedirect = false, headers = {}, ...rest } = options;
   const finalHeaders: Record<string, string> = {
     ...headers as Record<string, string>,
   };
@@ -80,21 +81,25 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
       });
       if (retryRes.status === 401) {
         clearTokens();
-        // 跳转登录页（避免循环）
-        const hash = window.location.hash || '';
-        if (!hash.startsWith('#/account/sign-in')) {
-          const redirect = encodeURIComponent(hash + window.location.search);
-          window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
+        // 跳转登录页（避免循环）—— 除非调用方明确要求不跳转（用于 OAuth 回调等场景）
+        if (!noRedirect) {
+          const hash = window.location.hash || '';
+          if (!hash.startsWith('#/account/sign-in')) {
+            const redirect = encodeURIComponent(hash + window.location.search);
+            window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
+          }
         }
         throw new ApiError('未登录或登录已过期', 401, 'unauthorized');
       }
       return await retryRes.json() as T;
     } else {
       clearTokens();
-      const hash = window.location.hash || '';
-      if (!hash.startsWith('#/account/sign-in')) {
-        const redirect = encodeURIComponent(hash + window.location.search);
-        window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
+      if (!noRedirect) {
+        const hash = window.location.hash || '';
+        if (!hash.startsWith('#/account/sign-in')) {
+          const redirect = encodeURIComponent(hash + window.location.search);
+          window.location.href = `/account.html#/account/sign-in?redirect=${redirect}`;
+        }
       }
       throw new ApiError('未登录或登录已过期', 401, 'unauthorized');
     }
@@ -109,6 +114,25 @@ export async function apiFetch<T = unknown>(path: string, options: ApiOptions = 
       code = errData.code;
     } catch {}
     throw new ApiError(errMsg, res.status, code);
+  }
+
+  // 防御性检查：确保响应是 JSON 格式
+  // InfinityFree 的 Bot Protection 可能返回 HTML 挑战页
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    // 尝试解析为 JSON，失败则抛出明确错误
+    try {
+      const text = await res.text();
+      // 检测 InfinityFree Bot Protection 挑战页
+      if (text.includes('__test') || text.includes('slowAES')) {
+        throw new ApiError('服务暂时不可用，请刷新页面后重试', res.status, 'bot_protection');
+      }
+      const data = JSON.parse(text);
+      return data as T;
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      throw new ApiError('服务器返回了非 JSON 数据，请刷新页面后重试', res.status, 'non_json_response');
+    }
   }
 
   return await res.json() as T;
