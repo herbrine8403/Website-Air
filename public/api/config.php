@@ -19,6 +19,18 @@ define('GITHUB_CLIENT_ID', 'Ov23ctExKxAIGEjm97mv');
 define('GITHUB_CLIENT_SECRET', 'REMOVED_GITHUB_CLIENT_SECRET');
 define('GITHUB_REDIRECT_URI', 'https://newamethyst.ct.ws/api/auth/github-callback.php');
 
+// 火山引擎 TOS 对象存储配置（用于 Air 官方下载源直传/直下）
+// 注意：InfinityFree 不支持环境变量，所以直接内置
+// 如需更换 bucket 或区域，修改以下常量即可
+define('TOS_ACCESS_KEY', 'REMOVED_TOS_ACCESS_KEY');
+define('TOS_SECRET_KEY', 'REMOVED_TOS_SECRET_KEY');
+define('TOS_ENDPOINT', 'tos-cn-beijing.volces.com');
+define('TOS_BUCKET', 'air-resources');
+define('TOS_REGION', 'cn-beijing');
+define('TOS_SERVICE', 'tos');
+// Air 官网下载源是否处于限免测试阶段（前端显示提示）
+define('AIR_SOURCE_FREE_TEST', true);
+
 // CORS 配置：基于白名单的 Origin 校验
 $cors_allowed_origins = [
     'https://newamethyst.ct.ws',
@@ -188,26 +200,81 @@ function jwt_decode($token) {
 /**
  * 从 Authorization 头提取 Bearer token
  * 返回 token 字符串或 null
+ *
+ * InfinityFree 使用 PHP-FPM（FastCGI）模式，Authorization 头可能不会被自动传递给
+ * $_SERVER['HTTP_AUTHORIZATION'] 变量。因此需要多重 fallback：
+ * 1. Authorization 头（多种方式获取）
+ * 2. Cookie
+ * 3. URL 参数
  */
 function extract_bearer_token() {
     $token = null;
 
-    // 1. 从 Authorization 头提取（标准方式）
+    // 1. 从 Authorization 头提取（标准方式 + 多重 fallback）
     $authHeader = null;
+
+    // 1a. $_SERVER['HTTP_AUTHORIZATION']（标准方式）
     if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
-    } elseif (getenv('HTTP_AUTHORIZATION')) {
+    }
+    // 1b. getenv('HTTP_AUTHORIZATION')
+    if (!$authHeader && getenv('HTTP_AUTHORIZATION')) {
         $authHeader = getenv('HTTP_AUTHORIZATION');
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+    }
+    // 1c. $_SERVER['REDIRECT_HTTP_AUTHORIZATION']（Apache Rewrite 透传）
+    if (!$authHeader && isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
         $authHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
-    } elseif (function_exists('getallheaders')) {
-        $allHeaders = getallheaders();
-        if (isset($allHeaders['Authorization'])) {
-            $authHeader = $allHeaders['Authorization'];
-        } elseif (isset($allHeaders['authorization'])) {
-            $authHeader = $allHeaders['authorization'];
+    }
+    // 1d. $_SERVER['REDIRECT_REDIRECT_HTTP_AUTHORIZATION']（多重 Rewrite）
+    if (!$authHeader && isset($_SERVER['REDIRECT_REDIRECT_HTTP_AUTHORIZATION'])) {
+        $authHeader = $_SERVER['REDIRECT_REDIRECT_HTTP_AUTHORIZATION'];
+    }
+    // 1e. $_ENV['HTTP_AUTHORIZATION']
+    if (!$authHeader && isset($_ENV['HTTP_AUTHORIZATION'])) {
+        $authHeader = $_ENV['HTTP_AUTHORIZATION'];
+    }
+    // 1f. getenv('HTTP_AUTHORIZATION')（再次尝试，某些环境下 $_ENV 和 getenv 结果不同）
+    if (!$authHeader && function_exists('getenv') && @getenv('HTTP_AUTHORIZATION')) {
+        $authHeader = @getenv('HTTP_AUTHORIZATION');
+    }
+    // 1g. getallheaders()（PHP-FPM 模式下可能可用）
+    if (!$authHeader && function_exists('getallheaders')) {
+        $allHeaders = @getallheaders();
+        if (is_array($allHeaders)) {
+            if (isset($allHeaders['Authorization'])) {
+                $authHeader = $allHeaders['Authorization'];
+            } elseif (isset($allHeaders['authorization'])) {
+                $authHeader = $allHeaders['authorization'];
+            } else {
+                // 遍历所有头，查找 Authorization（不区分大小写）
+                foreach ($allHeaders as $key => $value) {
+                    if (strtolower($key) === 'authorization') {
+                        $authHeader = $value;
+                        break;
+                    }
+                }
+            }
         }
     }
+    // 1h. apache_request_headers()（Apache 专用函数）
+    if (!$authHeader && function_exists('apache_request_headers')) {
+        $apacheHeaders = @apache_request_headers();
+        if (is_array($apacheHeaders)) {
+            if (isset($apacheHeaders['Authorization'])) {
+                $authHeader = $apacheHeaders['Authorization'];
+            } elseif (isset($apacheHeaders['authorization'])) {
+                $authHeader = $apacheHeaders['authorization'];
+            } else {
+                foreach ($apacheHeaders as $key => $value) {
+                    if (strtolower($key) === 'authorization') {
+                        $authHeader = $value;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if ($authHeader && preg_match('/Bearer\s+(.+)/i', $authHeader, $matches)) {
         $token = trim($matches[1]);
     }
@@ -217,7 +284,7 @@ function extract_bearer_token() {
         $token = $_COOKIE['air_access_token'];
     }
 
-    // 3. 从 URL 参数提取（兼容某些场景）
+    // 3. 从 URL 参数提取（兼容某些场景，例如 OAuth 回调）
     if (!$token) {
         $token = $_GET['access_token'] ?? $_POST['access_token'] ?? null;
     }

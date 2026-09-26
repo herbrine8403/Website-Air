@@ -196,3 +196,80 @@ function tos_cover_key($user_id, $filename) {
     $random = bin2hex(random_bytes(4));
     return "covers/{$user_id}/{$timestamp}_{$random}_{$safe_filename}";
 }
+
+/**
+ * 生成去重的封面图片 key
+ * 格式：covers/{user_id}/{size}_{filename}
+ * 相同文件名 + 相同大小会生成相同 key，从而实现去重
+ *
+ * @param int|string $user_id 用户 ID
+ * @param string $filename 文件名
+ * @param int $file_size 文件字节数
+ * @return string 对象 key
+ */
+function tos_cover_key_dedup($user_id, $filename, $file_size) {
+    $safe_filename = basename($filename);
+    $safe_filename = preg_replace('/[^\p{Han}\w.\-]/u', '_', $safe_filename);
+    if (strlen($safe_filename) > 200) {
+        $ext = pathinfo($safe_filename, PATHINFO_EXTENSION);
+        $safe_filename = substr($safe_filename, 0, 190) . ($ext ? '.' . $ext : '');
+    }
+    return "covers/{$user_id}/{$file_size}_{$safe_filename}";
+}
+
+/**
+ * 生成去重的临时上传 key
+ * 格式：uploads/{user_id}/{size}_{filename}
+ * 相同文件名 + 相同大小会生成相同 key，从而实现去重
+ *
+ * @param int|string $user_id 用户 ID
+ * @param string $filename 文件名
+ * @param int $file_size 文件字节数
+ * @return string 对象 key
+ */
+function tos_upload_key_dedup($user_id, $filename, $file_size) {
+    $safe_filename = basename($filename);
+    $safe_filename = preg_replace('/[^\p{Han}\w.\-]/u', '_', $safe_filename);
+    if (strlen($safe_filename) > 200) {
+        $ext = pathinfo($safe_filename, PATHINFO_EXTENSION);
+        $safe_filename = substr($safe_filename, 0, 190) . ($ext ? '.' . $ext : '');
+    }
+    return "uploads/{$user_id}/{$file_size}_{$safe_filename}";
+}
+
+/**
+ * 检查 TOS 对象是否存在（使用 HEAD 请求 + 预签名 URL）
+ *
+ * @param string $key 对象 key
+ * @return bool 是否存在
+ */
+function tos_object_exists($key) {
+    // 私有桶需要签名才能访问，用预签名下载 URL 发 HEAD 请求
+    $presigned_url = tos_presigned_download_url($key, 60);
+
+    $ch = curl_init($presigned_url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST => 'HEAD',
+        CURLOPT_NOBODY => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_FOLLOWLOCATION => false,
+    ]);
+
+    curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $errno = curl_errno($ch);
+    $error = curl_error($ch);
+    curl_close($ch);
+
+    if ($errno !== 0) {
+        // 网络错误，保守起见返回 false（让客户端尝试上传）
+        error_log("[tos_object_exists] cURL error (key={$key}): {$error}");
+        return false;
+    }
+
+    // 200 = 存在，404 = 不存在，403 = 签名问题（视为不存在，让客户端尝试上传）
+    return $http_code === 200;
+}
