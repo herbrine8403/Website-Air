@@ -208,6 +208,15 @@ if ($user['status'] !== 'active') {
 
 $user_id = (int)$user['id'];
 
+// 存储 github_access_token 到 users 表（供 me.php 后续刷新权限时使用）
+// 容错：如果字段不存在（未执行迁移），跳过存储，不影响登录
+$stmt = $db->prepare('UPDATE users SET github_access_token = ? WHERE id = ?');
+if ($stmt) {
+    $stmt->bind_param('si', $github_access_token, $user_id);
+    $stmt->execute();
+    $stmt->close();
+}
+
 // 同步 is_admin（基于邮箱 + GitHub 仓库权限）
 $current_email = $user['email'] ?? $primary_email;
 $should_be_admin = determine_is_admin($db, $current_email, $github_access_token, $github_login);
