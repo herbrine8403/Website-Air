@@ -58,12 +58,30 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(16) DEFAULT 'user',
     is_admin BOOLEAN DEFAULT FALSE,
     status VARCHAR(16) DEFAULT 'active',
+    deleted_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_login_at DATETIME,
     INDEX idx_github_id (github_id),
     INDEX idx_status (status),
     INDEX idx_is_admin (is_admin)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 兼容旧表：如果 users 表已存在但缺少 deleted_at 字段，则添加
+-- InfinityFree 不支持 IF NOT EXISTS 语法（MySQL 5.7-），所以用存储过程兼容
+DELIMITER //
+DROP PROCEDURE IF EXISTS add_users_deleted_at //
+CREATE PROCEDURE add_users_deleted_at()
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'deleted_at'
+    ) THEN
+        ALTER TABLE users ADD COLUMN deleted_at DATETIME DEFAULT NULL AFTER status;
+    END IF;
+END //
+DELIMITER ;
+CALL add_users_deleted_at();
+DROP PROCEDURE IF EXISTS add_users_deleted_at;
 
 -- 管理员审计日志表：记录所有管理员操作
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
@@ -443,3 +461,14 @@ ALTER TABLE users ADD INDEX idx_is_admin (is_admin);
 
 -- 【预置管理员】给邮箱为 weishixvn@outlook.com 的用户授予管理员权限
 UPDATE users SET is_admin = 1 WHERE email = 'weishixvn@outlook.com';
+
+-- ===== GitHub 权限同步迁移 =====
+-- 用于存储 GitHub access_token，使 me.php 每次刷新时能重新检查仓库权限
+-- 注意：access_token 明文存储，仅用于权限检查，不用于其他用途
+
+-- 【检查 3】github_access_token 列是否存在
+-- SELECT COLUMN_NAME FROM information_schema.COLUMNS
+--   WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'github_access_token';
+
+-- 【添加 3】添加 github_access_token 列（仅当上方检查返回空时执行）
+ALTER TABLE users ADD COLUMN github_access_token VARCHAR(128) AFTER github_username;
